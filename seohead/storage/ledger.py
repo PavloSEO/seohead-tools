@@ -43,6 +43,7 @@ from urllib.parse import urlsplit
 
 from seohead.core.sqlite import open_readonly
 
+from ..core.filesystem import file_sha256
 from . import ScanError, _dump, _loads, open_scan
 from .native_scan import _utc
 
@@ -207,14 +208,6 @@ def _expected() -> list[tuple]:
         return _objects(con)
     finally:
         con.close()
-
-
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _json_sha256(value: Any) -> str:
@@ -1507,7 +1500,7 @@ def ingest_scan(ledger: str | Path | sqlite3.Connection, scan_path: str | Path) 
 
 def _ingest_scan(ledger, scan_path, resources: contextlib.ExitStack) -> dict[str, Any]:
     path = Path(scan_path)
-    digest = _sha256_file(path)
+    digest = file_sha256(path)
     scan_con = open_scan(path)
     audit_reader = None
     streamed_issues = None
@@ -2152,7 +2145,7 @@ def record_verification(
     collection_state = collection.get("state")
     if collection_state not in {"measured", "offline", "partial", "not_run", "not_verifiable"}:
         raise LedgerError("verification artifact collection state is invalid")
-    artifact_sha256 = _sha256_file(path)
+    artifact_sha256 = file_sha256(path)
     outcomes = {
         "resolved": "resolved",
         "persisting": "persisting",

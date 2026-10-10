@@ -16,6 +16,7 @@ from typing import Any
 
 from seohead import __version__
 from seohead._build.provenance import BuildProvenanceError, packaged_provenance
+from seohead.core.filesystem import file_sha256
 
 # Legacy directory materialization only; native audit.v2 has no population bridge cap.
 MAX_AUDIT_PAGES = 10_000
@@ -915,19 +916,6 @@ def crawl_site_scan(
         return {**_response_data, **interrupted} if interrupted["finalized"] else interrupted
 
 
-def _sha256_file(path: str) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-# ponytail: not on the CLI/MCP path (those call reanalysis_handlers.reanalyze_scan);
-# kept only for the #382 unmeasurable-check contract. | upgrade: merge into the live
-# reanalysis once that contract ships there (epic #975 child 1, Pavel decides which wins).
 def reanalyze_scan(
     scan_in: str,
     *,
@@ -951,7 +939,7 @@ def reanalyze_scan(
     if not source_path.is_file():
         raise ValueError(f"scan_in does not exist: {scan_in}")
     producer_version, producer_revision, runtime_versions = _producer_provenance(producer_build)
-    source_sha256 = _sha256_file(str(source_path))
+    source_sha256 = file_sha256(str(source_path))
 
     import shutil
     import tempfile

@@ -10,7 +10,6 @@ from __future__ import annotations
 import codecs
 import contextlib
 import glob
-import hashlib
 import os
 import plistlib
 import re
@@ -25,6 +24,7 @@ from queue import Empty, Full, Queue
 from typing import Any
 from urllib.parse import urlsplit
 
+from seohead.core.filesystem import file_sha256
 from seohead.recon.net import validate_url
 
 from ..config import deep_merge
@@ -301,14 +301,6 @@ def _validate_requested_rate(config: dict, mode: str) -> None:
     patch_speed(blob, float(rate))
 
 
-def _sha256_file(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _rate_limit_provenance(
     config: dict,
     mode: str,
@@ -338,8 +330,8 @@ def _rate_limit_provenance(
     if derived_path:
         try:
             enabled, effective = read_speed(Path(derived_path).read_bytes())
-            derived_hash = _sha256_file(derived_path)
-            base_hash = _sha256_file(base_path) if base_path else None
+            derived_hash = file_sha256(derived_path)
+            base_hash = file_sha256(base_path) if base_path else None
         except (OSError, ValueError):
             return {
                 "state": "unverified",
@@ -370,7 +362,7 @@ def _rate_limit_provenance(
                 "state": "verified_from_base" if enabled else "base_config_unlimited",
                 "effective_urls_per_second": effective if enabled else None,
                 "base_source": base_source,
-                "base_config_sha256": _sha256_file(base_path),
+                "base_config_sha256": file_sha256(base_path),
             }
         except (OSError, ValueError):
             return {"state": "base_rate_unverified", "effective_urls_per_second": None}
