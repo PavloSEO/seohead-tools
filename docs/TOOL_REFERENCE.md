@@ -1497,13 +1497,13 @@ Read the bounded project observer snapshot: tasks, methods, competitors, retaine
 
 MCP name: `seo_project_inbox_submit`
 
-Persist a specialist note or proposed goal without starting any work.
+Persist a specialist note, proposed goal or question without starting any work.
 
 | Argument | Type | Default |
 |---|---|---|
 | `directory` | `str` | `required` |
 | `text` | `str` | `required` |
-| `kind` | `Literal['note', 'proposed_goal']` | `'note'` |
+| `kind` | `Literal['note', 'proposed_goal', 'question']` | `'note'` |
 | `references` | `list[str] | None` | `None` |
 | `author_role` | `Literal['specialist', 'agent']` | `'specialist'` |
 | `expected_revision` | `int | None` | `None` |

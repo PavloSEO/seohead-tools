@@ -1743,12 +1743,12 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
     def seo_project_inbox_submit(
         directory: str,
         text: str,
-        kind: Literal["note", "proposed_goal"] = "note",
+        kind: Literal["note", "proposed_goal", "question"] = "note",
         references: list[str] | None = None,
         author_role: Literal["specialist", "agent"] = "specialist",
         expected_revision: int | None = None,
     ) -> dict[str, Any]:
-        """Persist a specialist note or proposed goal without starting any work."""
+        """Persist a specialist note, proposed goal or question without starting any work."""
         return _checked(
             handlers.project_inbox_submit(
                 directory, text, kind, references, author_role, expected_revision

@@ -100,7 +100,7 @@ def _entry(value: Any) -> dict[str, Any]:
         raise ValueError("project inbox entry has an unsupported shape")
     if type(value["id"]) is not str or not value["id"].startswith("inbox:"):
         raise ValueError("project inbox entry has an invalid id")
-    if value["kind"] not in {"note", "proposed_goal"}:
+    if value["kind"] not in {"note", "proposed_goal", "question"}:
         raise ValueError("project inbox entry has an invalid kind")
     _text(value["text"], "entry text")
     _references(value["references"])
@@ -116,8 +116,8 @@ def _entry(value: Any) -> dict[str, Any]:
         raise ValueError("project inbox entry has an invalid timestamp")
     if value["goal_state"] not in {None, "proposed", "accepted", "completed"}:
         raise ValueError("project inbox entry has an invalid goal state")
-    if value["kind"] == "note" and value["goal_state"] is not None:
-        raise ValueError("notes cannot have a goal state")
+    if value["kind"] != "proposed_goal" and value["goal_state"] is not None:
+        raise ValueError("only proposed goals can have a goal state")
     if value["kind"] == "proposed_goal" and value["goal_state"] is None:
         raise ValueError("proposed goals need a goal state")
     delivery = value["delivery"]
@@ -303,8 +303,8 @@ def submit(
     expected_revision: int | None = None,
 ) -> dict[str, Any]:
     """Store a note or proposed goal without executing anything."""
-    if kind not in {"note", "proposed_goal"}:
-        raise ValueError("kind must be note or proposed_goal")
+    if kind not in {"note", "proposed_goal", "question"}:
+        raise ValueError("kind must be note, proposed_goal or question")
     if author_role not in {"specialist", "agent"}:
         raise ValueError("author_role must be specialist or agent")
     with _transaction(directory, expected_revision) as (_, document):
