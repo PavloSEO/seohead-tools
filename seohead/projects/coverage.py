@@ -7,11 +7,12 @@ import hashlib
 import json
 import os
 import re
-import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from seohead.core.filesystem import atomic_write_bytes
 
 from .catalogue import load_catalogue
 from .workspace import _facts, _load, _target
@@ -703,18 +704,7 @@ def _transaction(directory: str | Path, expected_revision: int | None):
         content = json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
         if len(content.encode()) > MAX_BYTES:
             raise ValueError("coverage exceeds its byte limit")
-        stage_fd, stage_name = tempfile.mkstemp(prefix=".coverage-", dir=root)
-        try:
-            with os.fdopen(stage_fd, "w") as stream:
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(stage_name, root / "coverage.json")
-            from seohead.core.filesystem import fsync_directory
-
-            fsync_directory(root)
-        finally:
-            Path(stage_name).unlink(missing_ok=True)
+        atomic_write_bytes(root / "coverage.json", content.encode("utf-8"))
     finally:
         lock.unlink(missing_ok=True)
 

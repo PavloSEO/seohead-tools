@@ -35,6 +35,7 @@ from seohead.checks import (
     robots as robots_core,
 )
 from seohead.core import runlog
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.core.models import ParseManyResult, RobotsCheckResult
 
 LARGE_EVIDENCE_JOIN_SCAN_PAGES = 100_000
@@ -2723,9 +2724,6 @@ def crawl_enrich(
     """
     if not external_csv:
         raise ValueError("external_csv required")
-    import contextlib
-    import os
-    import tempfile
     from pathlib import Path
 
     from seohead.checks.analytics_findings import analytics_findings
@@ -2766,15 +2764,7 @@ def crawl_enrich(
             raise ValueError("cannot write an orphan list from a partial crawl")
         target = Path(out_urls)
         target.parent.mkdir(parents=True, exist_ok=True)
-        descriptor, temporary = tempfile.mkstemp(dir=target.parent, prefix=".crawl-enrich-")
-        try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                handle.writelines(f"{url}\n" for url in candidates)
-            os.replace(temporary, target)
-        except BaseException:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(temporary)
-            raise
+        atomic_write_bytes(target, "".join(f"{url}\n" for url in candidates).encode("utf-8"))
     result: dict[str, Any] = {
         "schema_version": "crawl_enrich.v1",
         "join": joined,
@@ -3797,11 +3787,7 @@ TRAFFIC_REPORT_BASENAME = "metrika-traffic"
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    import os
-
-    partial = path.with_name(f".{path.name}.partial")
-    partial.write_text(text, encoding="utf-8", newline="\n")
-    os.replace(partial, path)
+    atomic_write_bytes(path, text.encode("utf-8"))
 
 
 def metrika_traffic_pdf(

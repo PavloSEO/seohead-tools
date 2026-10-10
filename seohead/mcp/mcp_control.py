@@ -12,12 +12,17 @@ import json
 import os
 import stat
 import sys
-import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from seohead.core.filesystem import fsync_directory, lock_exclusive, open_lock, unlock
+from seohead.core.filesystem import (
+    atomic_write_bytes,
+    fsync_directory,
+    lock_exclusive,
+    open_lock,
+    unlock,
+)
 from seohead.mcp.mcp_profiles import PROFILE_LABELS, PROFILES, profile_tools
 
 SERVER = "seohead"
@@ -58,18 +63,7 @@ def _read(path: Path) -> bytes:
 def _atomic(path: Path, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     mode = stat.S_IMODE(path.stat().st_mode) & 0o600 if path.exists() else 0o600
-    fd, temporary = tempfile.mkstemp(prefix=".seohead-", dir=path.parent)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            os.chmod(temporary, mode or 0o600)
-            handle.write(data)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        fsync_directory(path.parent)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    atomic_write_bytes(path, data, mode=mode or 0o600)
 
 
 @contextmanager

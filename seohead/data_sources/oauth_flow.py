@@ -9,13 +9,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import secrets
-import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from seohead.core.filesystem import atomic_write_bytes
 from seohead.data_sources.credentials import is_private_mode
 
 FLOW_TTL = timedelta(seconds=600)
@@ -37,16 +36,9 @@ def _check_path(path: Path) -> None:
 
 
 def _write(path: Path, record: dict[str, Any]) -> None:
-    descriptor, staged = tempfile.mkstemp(prefix=".oauth-flow-", dir=path.parent)
-    try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(record, stream, sort_keys=True)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(staged, 0o600)
-        os.replace(staged, path)
-    finally:
-        Path(staged).unlink(missing_ok=True)
+    atomic_write_bytes(
+        path, json.dumps(record, sort_keys=True).encode("utf-8"), prefix=".oauth-flow-", mode=0o600
+    )
 
 
 def create_flow(path: Path, now: datetime) -> tuple[dict[str, Any], str]:
