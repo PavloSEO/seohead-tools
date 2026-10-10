@@ -185,8 +185,60 @@ def _coverage_note(matched: int, total: int, min_coverage: float) -> str | None:
     return f"stored HTML matched only {matched} of {total} indexable pages ({coverage:.0%})"
 
 
+def _add_dom_findings(
+    ctx: AuditContext, url: str, depth: int, nodes: int, coverage_note: str | None
+) -> None:
+    t = ctx.thresholds
+    if depth > t["dom_depth_max"]:
+        details = {"dom_depth": depth, "max": t["dom_depth_max"]}
+        if coverage_note:
+            details["html_coverage"] = coverage_note
+        ctx.add("DOM_TOO_DEEP", target_url=url, details=details)
+    if nodes > t["dom_nodes_max"]:
+        details = {"dom_nodes": nodes, "max": t["dom_nodes_max"]}
+        if coverage_note:
+            details["html_coverage"] = coverage_note
+        ctx.add("DOM_TOO_MANY_NODES", target_url=url, details=details)
+
+
+def _check_dom_retained(ctx: AuditContext) -> None:
+    """DOM size from the bodies a native crawl retained in its own scan store."""
+    pages = ctx.indexable_html_pages()
+    total = len(pages)
+    measured: list[tuple[str, int, int]] = []
+    for page in pages:
+        html = ctx.stored_html(page.url)
+        if html is None:
+            continue
+        try:
+            depth, nodes = _dom_metrics(html)
+        except Exception:
+            continue
+        page.metrics["dom_depth"] = depth
+        page.metrics["dom_nodes"] = nodes
+        measured.append((page.url, depth, nodes))
+    coverage_note = _coverage_note(
+        len(measured), total, ctx.thresholds.get("html_store_coverage_min", 0.5)
+    )
+    for url, depth, nodes in measured:
+        _add_dom_findings(ctx, url, depth, nodes, coverage_note)
+    if total == 0:
+        reason = "no indexable HTML pages"
+    elif not measured:
+        reason = "body not retained (storage.body_mode=off or over storage.max_body_bytes)"
+    elif coverage_note:
+        reason = f"{coverage_note} — DOM size not assessed for the rest"
+    else:
+        return
+    ctx.skip("DOM_TOO_DEEP", reason)
+    ctx.skip("DOM_TOO_MANY_NODES", reason)
+
+
 def check_dom(ctx: AuditContext) -> None:
     html_dir = ctx.config.get("input", {}).get("html_store_dir")
+    if (not html_dir or not os.path.isdir(html_dir)) and ctx.stored_html is not None:
+        _check_dom_retained(ctx)
+        return
     if not html_dir or not os.path.isdir(html_dir):
         ctx.skip("DOM_TOO_DEEP", "no stored HTML (input.html_store_dir not set)")
         ctx.skip("DOM_TOO_MANY_NODES", "no stored HTML (input.html_store_dir not set)")
@@ -211,16 +263,7 @@ def check_dom(ctx: AuditContext) -> None:
             continue
         page.metrics["dom_depth"] = depth
         page.metrics["dom_nodes"] = nodes
-        if depth > t["dom_depth_max"]:
-            details = {"dom_depth": depth, "max": t["dom_depth_max"]}
-            if coverage_note:
-                details["html_coverage"] = coverage_note
-            ctx.add("DOM_TOO_DEEP", target_url=page.url, details=details)
-        if nodes > t["dom_nodes_max"]:
-            details = {"dom_nodes": nodes, "max": t["dom_nodes_max"]}
-            if coverage_note:
-                details["html_coverage"] = coverage_note
-            ctx.add("DOM_TOO_MANY_NODES", target_url=page.url, details=details)
+        _add_dom_findings(ctx, page.url, depth, nodes, coverage_note)
     if matched == 0:
         reason = "stored HTML present but no files mapped to crawled URLs"
         ctx.skip("DOM_TOO_DEEP", reason)
