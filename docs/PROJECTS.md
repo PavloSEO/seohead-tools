@@ -289,6 +289,27 @@ Recording a fact does not reorder work by itself: apply the priority policy belo
 to act on it. The MCP equivalent is `seo_project_facts`, with the same `facts`,
 `detect` and `apply` arguments.
 
+### Linking a semantic core
+
+A project keeps a link to its semantic core and a short summary, never the core
+itself. The core stays in its own database; the project database is not merged with
+it. Record the link as operator-entered facts, so it uses the same provenance and
+precedence rules as any other fact:
+
+```bash
+seohead project facts --directory ./example-project \
+  --input '{"facts":[
+    {"name":"semcore_project","value":"semantics/semcore/example-shop","provenance":"operator: semantic core project directory","observed_at":null},
+    {"name":"semcore_cluster_count","value":42,"provenance":"operator: semcore report summary","observed_at":null},
+    {"name":"semcore_landing_mapping","value":"38 of 42 clusters mapped to a landing page","provenance":"operator: semcore landing-page mapping summary","observed_at":null}
+  ]}' --apply
+```
+
+Re-recording a name replaces its value in place. Detection never writes these names,
+and a supplied fact cannot claim detection provenance. The values are a relative
+project-side identifier and plain summary numbers or text; keep absolute local paths
+out of the project record.
+
 ## Checklist coverage
 
 Checklist initialization records the built-in catalogue as local definitions; it
