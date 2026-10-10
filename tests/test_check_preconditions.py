@@ -111,7 +111,11 @@ def test_silent_checks_are_named_so_the_gap_is_visible(tmp_path):
     # has no parser evidence for duplicate ids and no marker/session/slash
     # candidate, so these remain named silent checks rather than manufactured
     # findings.
-    assert coverage["checks_silent"] <= 62
+    # 62 -> 66 after the batch-4 merge train added four checks that the export
+    # fixture cannot trip by construction: INTERNAL_NOFOLLOW_OUTLINKS and
+    # JS_CONSOLE_ERRORS need native-crawl evidence, NOODP and NOYDIR fire only
+    # on a robots directive the fixture does not carry.
+    assert coverage["checks_silent"] <= 66
 
 
 def test_a_disabled_check_is_its_own_bucket_never_silent_or_clean(tmp_path):

@@ -11,7 +11,7 @@
     "source": null,
     "exports_dir": "docs/examples/exports",
     "sf_version_detected": null,
-    "generated_at": "2026-10-10T01:38:31Z",
+    "generated_at": "2026-10-10T07:07:37Z",
     "profile": "full",
     "exports_used": [
       "internal_all",
@@ -504,12 +504,12 @@
     ],
     "health_score": null,
     "check_coverage": {
-      "checks_total": 184,
+      "checks_total": 186,
       "checks_fired": 20,
       "checks_skipped": 100,
       "checks_disabled": 0,
       "checks_disabled_ids": [],
-      "checks_silent": 64,
+      "checks_silent": 66,
       "checks_silent_ids": [
         "BAD_REDIRECT_TYPE",
         "BLOCKED_BY_ROBOTS",
@@ -538,6 +538,8 @@
         "HTTP_URL",
         "IMPORTANT_URL_BLOCKED_BY_ROBOTS",
         "INLINK_BOILERPLATE_ONLY",
+        "INTERNAL_NOFOLLOW_OUTLINKS",
+        "JS_CONSOLE_ERRORS",
         "META_REFRESH_REDIRECT",
         "NOARCHIVE",
         "NOFOLLOW_PAGE",
@@ -576,10 +578,10 @@
         "URL_UPPERCASE",
         "YMYL_REVIEW_CANDIDATE"
       ],
-      "coverage": 0.457
+      "coverage": 0.462
     },
-    "health_score_reason": "only 84 of 184 checks could run (46% coverage); too little evidence to score",
-    "health_score_basis": "84 of 184 checks could run; the score is not comparable to a run with full evidence",
+    "health_score_reason": "only 86 of 186 checks could run (46% coverage); too little evidence to score",
+    "health_score_basis": "86 of 186 checks could run; the score is not comparable to a run with full evidence",
     "internal_linking": {
       "measured": false,
       "reason": "no all_inlinks export (needed for the complete internal edge list)"

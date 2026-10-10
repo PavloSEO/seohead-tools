@@ -11,7 +11,7 @@ speeds, so counting them together is how a two-day job becomes a two-week one.
 
 ## Covers
 
-- **Meta Description** — Missing · Multiple · Duplicate · Over 155 Characters · Below 70 Characters · Over 985 Pixels · Below 400 Pixels (carried from an export, not judged) · Outside <head>
+- **Meta Description** — Missing · Multiple · Duplicate · Over 155 Characters · Below 70 Characters · Over 985 Pixels · Below 400 Pixels · Outside <head>
 
 ## The chain
 
@@ -41,6 +41,8 @@ export never carries a count of occurrences, only the one value it kept.
 `DESC_MULTIPLE` existed, so every check above still measures the same string it always has.
 `DESC_MULTIPLE` is purely additive evidence about *how many* live tags there are, not a change
 in *which* one the rest of this chain reads.
+
+`Below 400 Pixels` is carried from an export and not judged: the pixel width is never computed here.
 
 The character thresholds are configuration. The published catalogue names 155 characters as the
 upper bound; this toolkit's default is **160**, and 70 for the lower bound. If a report is going

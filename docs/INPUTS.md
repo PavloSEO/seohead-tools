@@ -143,7 +143,6 @@ and this decision makes no backend migration.
 | `skill-list` | No direct input | — |
 | `skill-show` | Selector (`name`) | — |
 | `scenario-list` | No direct input | — |
-| `scenario-list` | No direct input | — |
 | `scenario-show` | Selector (`name`) | — |
 | `provider-registry` | No direct input | — |
 | `provider-readiness` | Inline JSON (`provider, operation`) | Offline readiness and operation discovery; no provider requests. |

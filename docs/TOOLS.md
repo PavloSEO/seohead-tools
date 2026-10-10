@@ -16,8 +16,8 @@ The shared contract: JSON out; when a source is unreachable the tool returns
 `{"ok": false, "error": "..."}` instead of raising. An unreachable site is
 data, not an accident.
 
-The current registry has 164 commands and 173 callable tools,
-with 182 audit checks. These are inventories, not coverage on every input.
+The current registry has 167 commands and 176 callable tools,
+with 186 audit checks. These are inventories, not coverage on every input.
 
 <!-- generated-command-inventory:start -->
 ## Generated command inventory
@@ -41,22 +41,23 @@ and inputs remain in the nearby route sections and generated tool reference.
 · `project-facts` · `project-inbox-acknowledge` · `project-inbox-goal` · `project-inbox-list` ·
 `project-inbox-read` · `project-inbox-submit` · `project-inbox-triage` · `project-inbox-unread` ·
 `project-new` · `project-observe` · `project-open` · `project-policy` · `project-prepare` ·
-`project-priorities` · `project-progress` · `project-scans` · `project-sources-link` · `project-sources-list` · `project-sources-unlink` · `project-start` · `project-status` ·
-`project-task-detail` · `project-view-list` · `project-view-save` · `project-view-show` · `provider-auth` ·
-`provider-collect` · `provider-join` · `provider-readiness` · `provider-registry` · `provider-replay` ·
-`provider-verify` · `publication-cohorts` · `redirects-check` · `redirects-generate` · `regions-check` ·
-`regions-tree` · `remediation-cases` · `remediation-create` · `remediation-ingest` · `remediation-recheck` · `remediation-record-verification` ·
+`project-priorities` · `project-progress` · `project-scans` · `project-sources-link` · `project-sources-list`
+· `project-sources-unlink` · `project-start` · `project-status` · `project-task-detail` · `project-view-list`
+· `project-view-save` · `project-view-show` · `provider-auth` · `provider-collect` · `provider-join` ·
+`provider-readiness` · `provider-registry` · `provider-replay` · `provider-verify` · `publication-cohorts` ·
+`redirects-check` · `redirects-generate` · `regions-check` · `regions-tree` · `remediation-cases` ·
+`remediation-create` · `remediation-ingest` · `remediation-recheck` · `remediation-record-verification` ·
 `remediation-report` · `remediation-summary` · `remediation-transition` · `render-check` · `report-build` ·
 `robots-check` · `scan-body-diff` · `scan-content-search` · `scan-content-search-page` · `scan-evidence` ·
 `scan-export` · `scan-extract` · `scan-fragment-links` · `scan-import-urls` · `scan-inspect` ·
 `scan-link-inspect` · `scan-list` · `scan-navigation` · `scan-pin` · `scan-prune` · `scan-reanalyze` ·
 `scan-rendered-routes` · `scan-requeue` · `scan-snapshot` · `scan-status` · `scan-url-detail` ·
-`scan-url-query` · `scenario-list` · `scenario-show` · `schema-build` · `schema-check` · `security-check` · `segment-diff` ·
-`semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` · `skill-list` ·
-`skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` · `sources-status`
-· `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` · `verify-fixes` ·
-`wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` · `workflow-resume` ·
-`workflow-start` · `workflow-status`
+`scan-url-query` · `scenario-list` · `scenario-show` · `schema-build` · `schema-check` · `security-check` ·
+`segment-diff` · `semantic-inputs` · `semantic-similarity` · `serp-fetch` · `site-audit` · `sitemap-crawl` ·
+`skill-list` · `skill-show` · `social-meta-check` · `soft404-check` · `sources-doctor` · `sources-export` ·
+`sources-status` · `sources-sync` · `spend-report` · `tech-detect` · `tool-catalog` · `topvisor-read` ·
+`verify-fixes` · `wayback-history` · `webmaster-url-queries` · `workflow-checkpoint` · `workflow-execute` ·
+`workflow-resume` · `workflow-start` · `workflow-status`
 <!-- generated-command-inventory:end -->
 ## Offline bounded comparison
 
@@ -734,7 +735,7 @@ assignment or by the audit's already validated segment rules. It records
 assignment provenance and keeps candidate, declared, confirmed, and unassigned
 states separate; it does not infer a shared implementation from repeated findings.
 
-**184 checks**: 12 critical, 84 warnings, 88 notices. Sources: SF exports,
+**186 checks**: 12 critical, 85 warnings, 89 notices. Sources: SF exports,
 derived metrics, inlink exports, the sitemap module, and heuristics.
 
 **Two modes.** A crawls by itself through the SF CLI (license required). B
@@ -770,7 +771,7 @@ turns on automatically for crawl modes (`--crawl`, `--crawl-list`, `--load-crawl
 `--sitemap` is given; pass `--no-live-recheck` to keep it off.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
-`seo_semantics_*` tools (164 + 5 + 4):
+`seo_semantics_*` tools (167 + 5 + 4):
 
 ```bash
 seohead mcp        # stdio
@@ -778,7 +779,7 @@ seohead mcp        # stdio
 
 ## Where to go next
 - [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — every tool's arguments, types, defaults, cost, and failure modes, generated from the MCP definitions
-- [CHECKS.md](CHECKS.md) — the 184 checks the SF crawl audit runs, generated from the registry
+- [CHECKS.md](CHECKS.md) — the 186 checks the SF crawl audit runs, generated from the registry
 - [ARCHITECTURE.md](ARCHITECTURE.md) — layers, invariants, where new code goes
 - [SKILLS.md](SKILLS.md) — which skill drives which tool
 - [DECISIONS.md](DECISIONS.md) — why it was decided this way and not another

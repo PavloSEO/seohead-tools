@@ -15,8 +15,8 @@ here is written about *our own* behaviour.
 
 | Status | Count | Meaning |
 |---|---:|---|
-| check | 128 | a registry check finds it |
-| tool | 33 | a command outside the crawl registry finds it |
+| check | 130 | a registry check finds it |
+| tool | 32 | a command outside the crawl registry finds it |
 | partial | 17 | we find part of it; the missing part is stated |
 | gap | 7 | we should find it and do not |
 | out of scope | 134 | a decision, with its reason |
@@ -24,7 +24,7 @@ here is written about *our own* behaviour.
 
 108 of the out-of-scope entries are two whole categories declined as single
 decisions — accessibility and AMP, each explained in its own section below. Of the
-remaining 212 issues, **161 are found today**, 18 are
+remaining 212 issues, **162 are found today**, 17 are
 found in part, 7 are gaps worth closing, and
 26 need something we have decided not to build.
 
