@@ -104,6 +104,9 @@ class CommandsMixin:
         elif request_id == "providers":
             self.providers_failed(text)
             return
+        elif request_id == "semimport":
+            self.semimport_failed(text)
+            return
         elif request_id == "scan-policy":
             callback = getattr(self, "_scan_policy_failed", None)
             if callback:

@@ -65,8 +65,8 @@ class BarTests(QuickCase):
         self.assertEqual(bar.url.text(), self.site["target"])
         self.assertTrue(bar.start_button.isEnabled())
         self.assertEqual(bar.start_button.property("role"), "primary")
-        self.assertIn("1 500", bar.start_button.toolTip())
-        self.assertEqual(bar.chip.text(), "2 запр/с  ·  лимит 1 500  ·  HTML")
+        self.assertIn("1\u00a0500", bar.start_button.toolTip())
+        self.assertEqual(bar.chip.text(), "2 запр/с  ·  лимит 1\u00a0500  ·  HTML")
         self.assertFalse(bar.message_row.isVisibleTo(bar))
 
     def test_the_strip_is_dense_and_has_one_primary_button(self):
@@ -198,7 +198,7 @@ class BarTests(QuickCase):
         self.assertTrue(bar.start_button.isEnabled())
         popover.limit.plus.click()
         self.assertEqual(bar.draft.url_limit, 2000)
-        self.assertIn("2 000", bar.chip.text())
+        self.assertIn("2\u00a0000", bar.chip.text())
         popover.html.click()
         self.assertEqual(bar.draft.value("storage.body_mode"), "off")
         self.assertIn("без HTML", bar.chip.text())

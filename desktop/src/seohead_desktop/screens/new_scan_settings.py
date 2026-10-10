@@ -85,22 +85,25 @@ class ScanSettingsDialog(QDialog):
         title = QLabel(tr("Настройки скана"))
         title.setProperty("text_style", "dialog")
         layout.addWidget(title)
-        meta = ElidedLabel(trf("{host} · новый скан", host=self.draft.host or tr("Нет данных")))
-        meta.setProperty("text_style", "meta")
-        layout.addWidget(meta, 1)
+        self.header_meta = ElidedLabel(trf("{host} · новый скан", host=self.draft.host or tr("Нет данных")))
+        self.header_meta.setProperty("text_style", "meta")
+        layout.addWidget(self.header_meta, 1)
         self.profile_button = QPushButton()
         self.profile_button.setObjectName("scanSettingsProfile")
         self.profile_button.setIcon(icon("expand_more"))
-        self.profile_button.setLayoutDirection(Qt.RightToLeft)
-        self.profile_button.setMinimumWidth(230)
+        self.profile_button.setMinimumWidth(150)
+        self.profile_button.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.profile_button.setToolTip(tr("Все профили…"))
         self.profile_button.clicked.connect(lambda: self.show_page("profiles"))
         layout.addWidget(self.profile_button)
         save = QPushButton(tr("Сохранить как профиль"))
         save.setObjectName("scanSettingsSaveProfile")
         save.setIcon(icon("bookmark_add"))
+        save.setAccessibleName(tr("Сохранить как профиль"))
         save.setEnabled(False)
         save.setToolTip(f"{tr('Недоступно в этой версии ядра')}: {tr('ядро не хранит именованные профили скана')}")
+        self.save_profile = save
+        self._save_text = tr("Сохранить как профиль")
         layout.addWidget(save)
         layout.addWidget(waiting_badge(ISSUE_PROFILES))
         close = QToolButton()
@@ -217,6 +220,10 @@ class ScanSettingsDialog(QDialog):
         super().resizeEvent(event)
         if hasattr(self, "aside"):
             self.aside.setVisible(self.width() >= 1000)
+            # Below 1000 px the header keeps the title, the profile and the actions; the host line and the save label go.
+            self.header_meta.setVisible(self.width() >= 1000)
+            self.save_profile.setText(self._save_text if self.width() >= 1000 else "")
+            self._elide_profile()
             wide = self.width() >= 900
             for _scroll, page in self.pages.values():
                 page.responsive(self.width() >= 1100)
@@ -225,6 +232,12 @@ class ScanSettingsDialog(QDialog):
                 button = self.nav[page_id]
                 button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon if wide else Qt.ToolButtonIconOnly)
                 button.setToolTip("" if wide else tr(title))
+
+    def _elide_profile(self):
+        """The profile name elides to the room the header leaves it."""
+        full = getattr(self, "_profile_full", "")
+        room = max(60, self.profile_button.width() - 40)
+        self.profile_button.setText(self.profile_button.fontMetrics().elidedText(full, Qt.ElideRight, room))
 
     def show_page(self, page_id):
         if page_id not in self.pages:
@@ -243,7 +256,8 @@ class ScanSettingsDialog(QDialog):
         for _scroll, page in self.pages.values():
             page.sync(problems)
         chain = tr("профиль проекта") if draft.project_layer else tr("настройки приложения")
-        self.profile_button.setText(trf("Профиль: {name}", name=chain))
+        self._profile_full = trf("Профиль: {name}", name=chain)
+        self._elide_profile()
         self.apply.setEnabled(not any(k in problems for k in problems if k not in ("source", "list", "sitemap")))
         rate = draft.rps()
         limit = trf("лимит {n} URL", n=grouped(draft.url_limit)) if draft.limit_enabled else tr("без лимита URL")
