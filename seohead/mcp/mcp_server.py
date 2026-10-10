@@ -2827,11 +2827,24 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
 
     @mcp.tool(annotations=read_files, structured_output=True)
     def seo_scan_content_search_page(
-        package: str, offset: int = 0, limit: int = 100
+        package: str,
+        offset: int = 0,
+        limit: int = 100,
+        status: Literal["matched", "not_matched", "unavailable"] | None = None,
+        status_code: int | None = None,
     ) -> dict[str, Any]:
-        """Read up to 100 indexed derived content-search records without rereading the scan."""
+        """Read up to 100 indexed derived content-search records without rereading the scan.
+
+        Optional status or status_code filters the stream; offset then counts matching records.
+        """
         return _checked(
-            handlers.scan_content_search_page(package=package, offset=offset, limit=limit)
+            handlers.scan_content_search_page(
+                package=package,
+                offset=offset,
+                limit=limit,
+                status=status,
+                status_code=status_code,
+            )
         )
 
     @mcp.tool(annotations=read_files, structured_output=True)
@@ -2850,6 +2863,17 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 url=url,
                 representation=representation,
                 limit=limit,
+            )
+        )
+
+    @mcp.tool(annotations=read_files, structured_output=True)
+    def seo_scan_structured_blocks(
+        input_path: str, url: str, representation: str = "static"
+    ) -> dict[str, Any]:
+        """Describe one retained page's JSON-LD blocks: line, state, graph findings and source JSON, offline."""
+        return _checked(
+            handlers.scan_structured_blocks(
+                input_path=input_path, url=url, representation=representation
             )
         )
 
@@ -2942,8 +2966,13 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
         offset: int = 0,
         limit: int = 100,
         max_bytes: int = 1_048_576,
+        columns: list[str] | None = None,
+        total: bool = False,
     ) -> dict[str, Any]:
-        """Read a bounded, paginated table view from one saved scan."""
+        """Read a bounded, paginated table view from one saved scan.
+
+        ``columns`` projects the named table columns; ``total`` adds the table's row count.
+        """
         return _checked(
             handlers.scan_inspect(
                 input_path=input_path,
@@ -2951,6 +2980,8 @@ def build_server(profile: str = "full", progress_notifications: bool = False):  
                 offset=offset,
                 limit=limit,
                 max_bytes=max_bytes,
+                columns=columns,
+                total=total,
             )
         )
 

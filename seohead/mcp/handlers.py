@@ -2937,8 +2937,9 @@ def markdown_extract(
     Pass ``html`` to render offline, or ``url`` to fetch it first. The
     content-area rendering is what is worth diffing between crawls, scoring,
     or handing to a model; the full-document rendering (header and footer
-    included) is what ``boilerplate_report`` hashes to check whether
-    boilerplate is actually consistent across a crawl.
+    included) is not what ``boilerplate_report`` takes: that check needs the
+    original HTML (or a precomputed hash) to see whether boilerplate is
+    consistent across a crawl.
     """
     if not url and not html:
         raise ValueError("url or html required")
@@ -4242,10 +4243,20 @@ def scan_inspect(
     offset: int = 0,
     limit: int = 100,
     max_bytes: int = 1_048_576,
+    columns: list[str] | None = None,
+    total: bool = False,
 ) -> dict[str, Any]:
     from seohead.mcp.history_handlers import scan_inspect as core
 
-    return core(input_path, table=table, offset=offset, limit=limit, max_bytes=max_bytes)
+    return core(
+        input_path,
+        table=table,
+        offset=offset,
+        limit=limit,
+        max_bytes=max_bytes,
+        columns=columns,
+        total=total,
+    )
 
 
 def scan_url_query(
@@ -5880,14 +5891,29 @@ def scan_content_search(
     }
 
 
-def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) -> dict[str, Any]:
-    """Read no more than 100 indexed derived content-search records without rescanning evidence."""
+def scan_content_search_page(
+    package: str,
+    offset: int = 0,
+    limit: int = 100,
+    status: str | None = None,
+    status_code: int | None = None,
+) -> dict[str, Any]:
+    """Read no more than 100 indexed derived content-search records without rescanning evidence.
+
+    With ``status`` or ``status_code`` the page is taken from the filtered stream: ``offset`` and
+    ``next_offset`` count matching records, and the scan is linear (every record is re-verified).
+    """
     import hashlib
     import json
     import os
 
     if type(offset) is not int or offset < 0 or type(limit) is not int or not 1 <= limit <= 100:
         raise ValueError("offset must be nonnegative and limit must be 1..100")
+    if status is not None and status not in {"matched", "not_matched", "unavailable"}:
+        raise ValueError("status must be matched, not_matched, unavailable, or omitted")
+    if status_code is not None and (type(status_code) is not int or not 100 <= status_code <= 599):
+        raise ValueError("status_code must be an integer 100..599 or omitted")
+    filtered = status is not None or status_code is not None
     root = Path(package)
     manifest_path = root / "manifest.json"
     if (
@@ -5933,6 +5959,36 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
         type(source.get("scan_uuid")) is not str or type(source.get("evidence_revision")) is not int
     ):
         raise ValueError("content-search package source identity is invalid")
+
+    def checked_row(line: bytes, digest: bytes) -> dict[str, Any]:
+        if len(line) > 64 * 1024 or not line.endswith(b"\n"):
+            raise ValueError("content-search package record is truncated or exceeds 64 KiB")
+        if hashlib.sha256(line).digest() != digest:
+            raise ValueError("content-search package record integrity is invalid")
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError("content-search package record is invalid") from exc
+        if not isinstance(row, dict):
+            raise ValueError("content-search package record is invalid")
+        if row.get("scan_uuid") != source.get("scan_uuid") or row.get(
+            "evidence_revision"
+        ) != source.get("evidence_revision"):
+            raise ValueError("content-search package record source identity disagrees")
+        return row
+
+    if filtered:
+        return _content_search_filtered_page(
+            manifest=manifest,
+            records=records,
+            index_path=index_path,
+            records_path=records_path,
+            offset=offset,
+            limit=limit,
+            status=status,
+            status_code=status_code,
+            checked_row=checked_row,
+        )
     if offset >= records["count"]:
         return {
             "ok": True,
@@ -5954,24 +6010,12 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
             line = stream.readline(64 * 1024 + 1)
             if not line:
                 raise ValueError("content-search package records are truncated")
-            if len(line) > 64 * 1024 or not line.endswith(b"\n"):
-                raise ValueError("content-search package record is truncated or exceeds 64 KiB")
             entry = offset + len(rows)
             index.seek(entry * records["index_entry_bytes"] + 8)
             expected = index.read(32)
-            if len(expected) != 32 or hashlib.sha256(line).digest() != expected:
-                raise ValueError("content-search package record integrity is invalid")
-            try:
-                row = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError("content-search package record is invalid") from exc
-            if not isinstance(row, dict):
-                raise ValueError("content-search package record is invalid")
-            if row.get("scan_uuid") != source.get("scan_uuid") or row.get(
-                "evidence_revision"
-            ) != source.get("evidence_revision"):
-                raise ValueError("content-search package record source identity disagrees")
-            rows.append(row)
+            if len(expected) != 32:
+                raise ValueError("content-search package index is truncated")
+            rows.append(checked_row(line, expected))
             if offset + len(rows) >= records["count"]:
                 break
     next_offset = offset + len(rows)
@@ -5986,6 +6030,61 @@ def scan_content_search_page(package: str, offset: int = 0, limit: int = 100) ->
     }
 
 
+def _content_search_filtered_page(
+    *,
+    manifest: dict[str, Any],
+    records: dict[str, Any],
+    index_path: Path,
+    records_path: Path,
+    offset: int,
+    limit: int,
+    status: str | None,
+    status_code: int | None,
+    checked_row: Any,
+) -> dict[str, Any]:
+    # ponytail: linear pass over every record, no matched index | ceiling: ~1M records per page read | upgrade: matched.idx offsets (issue #939 slice 2)
+    def matches(row: dict[str, Any]) -> bool:
+        return (status is None or row.get("status") == status) and (
+            status_code is None or row.get("status_code") == status_code
+        )
+
+    rows: list[dict[str, Any]] = []
+    seen = 0
+    has_more = False
+    entry_bytes = records["index_entry_bytes"]
+    with index_path.open("rb") as index, records_path.open("rb") as stream:
+        for _ in range(records["count"]):
+            marker = index.read(entry_bytes)
+            if len(marker) != entry_bytes:
+                raise ValueError("content-search package index is truncated")
+            stream.seek(int.from_bytes(marker[:8], "big"))
+            line = stream.readline(64 * 1024 + 1)
+            if not line:
+                raise ValueError("content-search package records are truncated")
+            row = checked_row(line, marker[8:40])
+            if not matches(row):
+                continue
+            if seen < offset:
+                seen += 1
+                continue
+            if len(rows) == limit:
+                has_more = True
+                break
+            rows.append(row)
+            seen += 1
+    return {
+        "ok": True,
+        "format": manifest["format"],
+        "source": manifest["source"],
+        "filtered": True,
+        "filter": {"status": status, "status_code": status_code},
+        "offset": offset,
+        "records": rows,
+        "has_more": has_more,
+        "next_offset": offset + len(rows),
+    }
+
+
 def scan_extract(
     input_path: str,
     rules: list[dict[str, Any]],
@@ -5996,6 +6095,14 @@ def scan_extract(
     from seohead.mcp.evidence_handlers import scan_extract as core
 
     return core(input_path, rules, url=url, representation=representation, limit=limit)
+
+
+def scan_structured_blocks(
+    input_path: str, url: str, representation: str = "static"
+) -> dict[str, Any]:
+    from seohead.mcp.evidence_handlers import scan_structured_blocks as core
+
+    return core(input_path, url, representation=representation)
 
 
 def marketing_inventory(
@@ -6130,6 +6237,7 @@ _RAW_HANDLERS = {
     "scan_content_search": scan_content_search,
     "scan_content_search_page": scan_content_search_page,
     "scan_extract": scan_extract,
+    "scan_structured_blocks": scan_structured_blocks,
     "marketing_inventory": marketing_inventory,
     "scan_fragment_links": scan_fragment_links,
     "scan_requeue": scan_requeue,

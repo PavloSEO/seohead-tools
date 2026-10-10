@@ -468,3 +468,96 @@ def test_regex_budget_exceeded_is_unavailable_never_absence(tmp_path, monkeypatc
     assert result["coverage"]["unavailable_reasons"] == {"regex_budget_exceeded": 1}
     assert result["coverage"]["absent_documents"] == 0
     assert result["absence_confirmed"] is False
+
+
+def test_content_search_page_filters_status_and_status_code(tmp_path, capsys):
+    pages = [
+        (
+            f"https://example.test/{index}",
+            "<html><head><script>GTM-PAGE</script></head><body>x</body></html>"
+            if index % 2 == 0
+            else "<html><head></head><body>plain</body></html>",
+        )
+        for index in range(21)
+    ]
+    scan = _scan(tmp_path / "scan", pages)
+    package = tmp_path / "package"
+    assert (
+        cli.main(
+            [
+                "scan-content-search",
+                "--scan",
+                str(scan),
+                "--query",
+                "GTM-PAGE",
+                "--scope",
+                "head_markup",
+                "--out-dir",
+                str(package),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    everything = handlers.scan_content_search_page(str(package), limit=100)["records"]
+    matched = [record for record in everything if record["status"] == "matched"]
+    assert len(matched) == 11
+
+    first = handlers.scan_content_search_page(str(package), limit=5, status="matched")
+    second = handlers.scan_content_search_page(str(package), offset=5, limit=5, status="matched")
+    last = handlers.scan_content_search_page(str(package), offset=10, limit=5, status="matched")
+    past = handlers.scan_content_search_page(str(package), offset=11, limit=5, status="matched")
+    assert first["filtered"] is True and first["filter"] == {
+        "status": "matched",
+        "status_code": None,
+    }
+    assert [r["url"] for r in first["records"]] == [r["url"] for r in matched[:5]]
+    assert (first["has_more"], first["next_offset"]) == (True, 5)
+    assert [r["url"] for r in second["records"]] == [r["url"] for r in matched[5:10]]
+    assert (second["has_more"], second["next_offset"]) == (True, 10)
+    assert [r["url"] for r in last["records"]] == [r["url"] for r in matched[10:]]
+    assert (last["has_more"], last["next_offset"]) == (False, 11)
+    assert (past["records"], past["has_more"], past["next_offset"]) == ([], False, 11)
+
+    not_matched = handlers.scan_content_search_page(str(package), limit=100, status="not_matched")
+    assert len(not_matched["records"]) == 10
+    assert all(record["status"] == "not_matched" for record in not_matched["records"])
+
+    by_code = handlers.scan_content_search_page(str(package), limit=100, status_code=200)
+    assert len(by_code["records"]) == 21
+    assert handlers.scan_content_search_page(str(package), status_code=404)["records"] == []
+    assert "filtered" not in handlers.scan_content_search_page(str(package), limit=1)
+
+    with pytest.raises(ValueError, match="status must be"):
+        handlers.scan_content_search_page(str(package), status="bogus")
+    with pytest.raises(ValueError, match="status_code must be"):
+        handlers.scan_content_search_page(str(package), status_code=99)
+
+    from seohead.mcp.mcp_server import build_server
+
+    tool = build_server()._tool_manager.get_tool("seo_scan_content_search_page")
+    assert tool.fn(package=str(package), offset=5, limit=5, status="matched") == second
+    assert (
+        cli.main(
+            [
+                "scan-content-search-page",
+                "--package",
+                str(package),
+                "--offset",
+                "5",
+                "--limit",
+                "5",
+                "--status",
+                "matched",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out) == second
+
+    records_path = package / "records.ndjson"
+    records_path.write_bytes(
+        records_path.read_bytes().replace(b"https://example.test/0", b"https://example.test/X", 1)
+    )
+    with pytest.raises(ValueError, match="record integrity"):
+        handlers.scan_content_search_page(str(package), limit=1, status="matched")

@@ -6,7 +6,7 @@ Generated from the MCP tool definitions in `seohead/mcp/mcp_server.py`, `seohead
 python scripts/generate_tool_reference.py
 ```
 
-**164 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 173 in total.
+**165 core tools** (`seohead <command>` / `seo_<command>` on the MCP server) plus **5 crawl-audit tools** (`sf_<command>`, driven by `seohead sf ...`) plus **4 semantic-core tools** (`seo_semantics_*`, driven by `seohead semantics <stage>`) — 174 in total.
 
 Every tool shares one contract: JSON in, JSON out. A target that could not be reached comes back as `{"ok": false, "error": "..."}` instead of raising, so an unreachable site is data, not a crash.
 
@@ -2672,8 +2672,14 @@ Read up to 100 indexed derived content-search records without rereading the scan
 | `package` | `str` | `required` |
 | `offset` | `int` | `0` |
 | `limit` | `int` | `100` |
+| `status` | `Literal['matched', 'not_matched', 'unavailable'] | None` | `None` |
+| `status_code` | `int | None` | `None` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+Optional status or status_code filters the stream; offset then counts matching records.
 
 ### `scan-extract`
 
@@ -2688,6 +2694,20 @@ Run bounded data-only extraction rules on retained complete bodies, without netw
 | `url` | `str | None` | `None` |
 | `representation` | `str` | `'static'` |
 | `limit` | `int` | `100` |
+
+**Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+### `scan-structured-blocks`
+
+MCP name: `seo_scan_structured_blocks`
+
+Describe one retained page's JSON-LD blocks: line, state, graph findings and source JSON, offline.
+
+| Argument | Type | Default |
+|---|---|---|
+| `input_path` | `str` | `required` |
+| `url` | `str` | `required` |
+| `representation` | `str` | `'static'` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
 
@@ -2793,8 +2813,14 @@ Read a bounded, paginated table view from one saved scan.
 | `offset` | `int` | `0` |
 | `limit` | `int` | `100` |
 | `max_bytes` | `int` | `1048576` |
+| `columns` | `list[str] | None` | `None` |
+| `total` | `bool` | `False` |
 
 **Cost** — network: no · writes files: no · idempotent: yes · spends money: no
+
+**Behavior and failure modes**
+
+``columns`` projects the named table columns; ``total`` adds the table's row count.
 
 ### `scan-url-detail`
 
