@@ -1,0 +1,185 @@
+"""CLI, configuration and filters of the semantic core; everything stays offline."""
+
+from __future__ import annotations
+
+import json
+import shutil
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from seohead.cli import main as seohead_main
+from seohead.data_sources import spend
+from seohead.semantics import config
+from seohead.semantics.cli import main
+from seohead.semantics.norm import Filters, normalize
+from seohead.semantics.runner import run_quiet
+from seohead.semantics.store import Store
+
+pytestmark = pytest.mark.usefixtures("semantics_offline")
+EXAMPLE = Path(__file__).resolve().parents[1] / "docs" / "examples" / "semantics" / "seohead-tech"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("  Ёлка---аудит!!! ", "елка аудит"),
+        ("SEO-аудит/2026", "seo аудит 2026"),
+        (None, ""),
+        ("краулер\n\tдля   сайта", "краулер для сайта"),
+    ],
+)
+def test_normalize_produces_a_stable_deduplication_key(raw, expected):
+    assert normalize(raw) == expected
+
+
+def test_presets_and_explicit_patterns():
+    seo = Filters(preset="seo")
+    assert seo.classify("краулер сайта", 100, 20) == ("kept", "commercial")
+    assert seo.classify("как провести seo аудит", 40, 20) == ("kept", "info")
+    assert seo.classify("seo курсы обучение", 100, 20)[0] == "dropped"
+    assert seo.classify("ремонт велосипеда", 100, 20)[0] == "review"
+    generic = Filters(preset="generic", stop=r"forbidden", info=r"guide")
+    assert generic.classify("arbitrary commercial phrase", 100, 20) == ("kept", "commercial")
+    assert generic.classify("guide to arbitrary phrase", 100, 20) == ("kept", "info")
+    assert generic.classify("forbidden arbitrary phrase", 100, 20)[0] == "dropped"
+    with pytest.raises(ValueError, match="unknown preset"):
+        Filters(preset="missing")
+
+
+def test_workspace_project_keeps_its_core_in_semantics(tmp_path):
+    workspace = tmp_path / "site"
+    workspace.mkdir()
+    (workspace / "project.json").write_text("{}", encoding="utf-8")
+    assert config.data_dir(workspace) == workspace / "semantics"
+    config.ensure_project(workspace)
+    assert config.db_path(workspace) == workspace / "semantics" / "sya.db"
+
+
+def test_config_preserves_quoted_hash_regex_and_custom_database(tmp_path):
+    directory = config.ensure_project(tmp_path / "demo")
+    (directory / "project.yaml").write_text(
+        'intent: "alpha#beta" # comment\nregions: [1, 2]\nany_intent: true\ndb: core.db\n',
+        encoding="utf-8",
+    )
+    cfg = config.load(directory)
+    assert cfg["intent"] == "alpha#beta"
+    assert cfg["regions"] == ["1", "2"]
+    assert cfg["any_intent"] is True
+    assert config.db_path(directory) == directory / "core.db"
+
+
+def test_status_is_readonly_and_missing_project_is_not_created(tmp_path, capsys):
+    project = tmp_path / "demo"
+    assert seohead_main(["semantics", "init", "--project", str(project)]) == 0
+    capsys.readouterr()
+    database = project / "sya.db"
+    with sqlite3.connect(database) as db:
+        db.execute("PRAGMA journal_mode=DELETE")
+        db.execute("INSERT INTO phrases(norm,status) VALUES('retained phrase','parked')")
+    before = database.read_bytes()
+    assert main(["status", "--project", str(project), "--json"]) == 0
+    current = json.loads(capsys.readouterr().out)
+    assert current["counts"]["parked"] == 1
+    assert database.read_bytes() == before
+
+    missing = tmp_path / "missing"
+    assert main(["status", "--project", str(missing)]) == 1
+    assert "database not found" in capsys.readouterr().err
+    assert not missing.exists()
+
+
+def test_negative_limits_fail_before_creating_paths(tmp_path):
+    with pytest.raises(SystemExit) as error:
+        main(["collect", "--project", str(tmp_path / "missing"), "--max-seeds", "-1"])
+    assert error.value.code == 2
+    assert not (tmp_path / "missing").exists()
+
+
+def test_import_preserves_existing_frequencies_and_rolls_back_bad_files(tmp_path):
+    project = tmp_path / "demo"
+    main(["init", "--project", str(project)])
+    with Store(project / "sya.db") as store:
+        store.upsert("synthetic phrase", base=99)
+        store.set_fields("synthetic phrase", exact=0)
+    source = tmp_path / "input.csv"
+    source.write_text(
+        "norm;base;quoted;exact;pos_g\nsynthetic phrase;1;7;5;3\nunmeasured phrase;;;0;\n",
+        encoding="utf-8",
+    )
+    assert main(["import", "--project", str(project), "--file", str(source)]) == 0
+    with Store(project / "sya.db", readonly=True) as store:
+        rows = {row["norm"]: row for row in store.phrases()}
+    assert (rows["synthetic phrase"]["base"], rows["synthetic phrase"]["exact"]) == (99, 0)
+    assert rows["synthetic phrase"]["status"] == "kept"
+    assert json.loads((project / "pool.json").read_text(encoding="utf-8"))
+
+    bad = tmp_path / "bad.csv"
+    bad.write_text("norm;base\ngood phrase;2\nbad phrase;not-a-number\n", encoding="utf-8")
+    assert main(["import", "--project", str(project), "--file", str(bad)]) == 1
+    with Store(project / "sya.db", readonly=True) as store:
+        assert "good phrase" not in {row["norm"] for row in store.phrases()}
+
+
+def test_example_project_runs_every_free_stage(tmp_path):
+    project = tmp_path / "seohead-tech"
+    shutil.copytree(EXAMPLE, project)
+    for argv in (
+        ["init"],
+        ["import", "--file", str(project / "phrases.csv")],
+        ["clean"],
+        ["graph"],
+        ["sitematch"],
+        ["report"],
+        ["excel"],
+        ["export"],
+    ):
+        assert main([argv[0], "--project", str(project), *argv[1:]]) == 0, argv
+    with Store(project / "sya.db", readonly=True) as store:
+        statuses = {row["norm"]: row["status"] for row in store.phrases()}
+    assert len(statuses) == 41
+    assert statuses["seo аудит сайта"] == "kept"
+    assert statuses["seo курсы обучение"] == "dropped"
+    assert statuses["ремонт велосипеда"] == "review"
+    assert (project / "report.md").is_file()
+    assert (project / "seohead-tech_semantic_core.xlsx").is_file()
+
+
+def test_mcp_runner_refuses_paid_stages_without_confirmation(tmp_path, monkeypatch):
+    from seohead.semantics.stages import collect
+
+    project = tmp_path / "demo"
+    assert run_quiet("init", project, allowed=("init",))["ok"]
+    (project / "seeds.txt").write_text("seo аудит сайта\n", encoding="utf-8")
+
+    def forbidden(**_kwargs):
+        raise AssertionError("an unconfirmed paid stage must not construct a provider")
+
+    monkeypatch.setattr(collect, "Wordstat", forbidden)
+    refused = run_quiet("collect", project, allowed=("collect",))
+    assert refused["ok"] is False and refused["paid"] is True
+    assert run_quiet("collect", project, allowed=("clean",))["ok"] is False
+
+
+def test_paid_stage_charges_are_tagged_in_the_shared_journal(tmp_path, monkeypatch):
+    from seohead.semantics.stages import collect
+
+    project = tmp_path / "demo"
+    run_quiet("init", project, allowed=("init",))
+    (project / "seeds.txt").write_text("seo аудит сайта\n", encoding="utf-8")
+
+    class Wordstat:
+        def __init__(self, **_kwargs):
+            pass
+
+        def expand(self, phrase, *, limit, regions):
+            spend.record("yandex_cloud", "wordstat.top", cost=1, unit="requests")
+            return {"seo аудит сайта онлайн": 90}, {"results": 1, "associations": 0}
+
+    monkeypatch.setattr(collect, "Wordstat", Wordstat)
+    result = run_quiet("collect", project, allowed=("collect",), confirm_paid=True)
+    assert result["ok"], result
+    (entry,) = spend.read_all()
+    assert entry["extra"] == {"semantics_project": str(project), "semantics_stage": "collect"}
+    assert result["result"]["spend"]["yandex_requests"] == 1

@@ -23,13 +23,16 @@ is `project-progress`.
 | `sf tasks` | Build `tasks.json`/`tasks.md` from an existing `audit.json` or scan artifact. |
 | `sf doctor` | Diagnose SF CLI discovery and optional dependencies. |
 | `sf save-config` | Copy the most recent SF crawl configuration into a reusable base config file. |
+| `semantics <stage>` | Accumulating semantic core in its own SQLite database: `init`, `import`, `collect`, `clean`, `graph`, `exact`, `cluster`, `competitors`, `synonyms`, `report`, `excel`, `mine`, `sitematch`, `relevance`, `status`, `export`, each with `--project DIR`. `collect`, `synonyms`, `cluster` and `exact` are paid; see [SEMANTICS.md](SEMANTICS.md). |
 | `mcp` | Start the local stdio MCP server; `--profile` selects `full`, `audit`, `infra`, `quick-check` or `router` ([MCP profiles](MCP_PROFILES.md)). |
 | `watch` | Optional Rich terminal observer for one project beside an AI chat ([terminal observer](TERMINAL.md)). Needs the `tui` extra. |
 | `tui` | Interactive terminal shell over the same handlers ([TERMINAL.md](TERMINAL.md)). Needs the `tui` extra. |
 | `scan`, `project`, `skill`, `scenario` | Grouped aliases for the `scan-*`, `project-*`, `skill-*` and `scenario-*` commands below. |
 
 The `sf_*` MCP tools (`sf_audit_run`, `sf_audit_summary`, `sf_audit_issues`, `sf_audit_tasks`,
-`sf_list_exports`) expose the Screaming Frog analyzer to agents.
+`sf_list_exports`) expose the Screaming Frog analyzer to agents. The `seo_semantics_*` MCP tools
+(`seo_semantics_status`, `seo_semantics_run`, `seo_semantics_mine`, `seo_semantics_paid`) expose
+`seohead semantics`; the paid one refuses to run without `confirm_paid=true`.
 
 ## Collect a site
 

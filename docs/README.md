@@ -58,6 +58,7 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
 | Wondering what this can do end to end | [scenarios/](scenarios/README.md) — workflows, outputs, costs and limits |
 | Looking for a command by job | [CLI.md](CLI.md) — every registered command grouped by area, with its network/write/paid annotations |
 | Looking for a tool | [TOOLS.md](TOOLS.md) — inventory, network use, side effects and limits |
+| Building a semantic core | [SEMANTICS.md](SEMANTICS.md) — `seohead semantics` stages, paid stages, recovery and the example project |
 | Looking for a tool's exact arguments, types, defaults, or cost | [TOOL_REFERENCE.md](TOOL_REFERENCE.md) — generated from the MCP tool definitions |
 | Checking which provider backs a workflow, and what it costs | [PROVIDERS.md](PROVIDERS.md) — generated capability and workflow matrix |
 | Looking for a check the SF audit runs | [CHECKS.md](CHECKS.md) — current check registry, generated from source |
@@ -72,7 +73,6 @@ for source/test references. [COMPARISON.md](COMPARISON.md) explains how to compa
 | Checking what our guidance was aligned against | [GOOGLE_GUIDANCE_REVIEW.md](GOOGLE_GUIDANCE_REVIEW.md) — the 175 Google Search Central guides read on 2026-09-09, their labels, and the three repairs |
 | Understanding the product and its role beside Screaming Frog | [COMPARISON.md](COMPARISON.md) — canonical positioning, workflow, and boundaries |
 | Reviewing the software for security, legal, or procurement | [SOFTWARE_REVIEW.md](SOFTWARE_REVIEW.md) — generated evidence pack, outbound endpoints, data flow, storage |
-| Integrating a guided scan adapter | [GUIDED_SCAN_ADAPTER.md](GUIDED_SCAN_ADAPTER.md) — the generic versioned conversation contract, states, transitions, and invariants |
 
 ## What lives here
 
