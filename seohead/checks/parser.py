@@ -30,6 +30,7 @@ from urllib.parse import parse_qsl, urljoin, urlparse
 from bs4 import BeautifulSoup, Tag
 
 from seohead.checks.content_area import TEXT_EXCLUDED_TAGS, extract_area_text, resolve_content_area
+from seohead.checks.text_normalize import declared_language
 from seohead.core.models import (
     DocumentPosition,
     DuplicateId,
@@ -2201,6 +2202,8 @@ def parse_html(html: str, final_url: str, options: dict[str, Any] | None = None)
     # Same reasoning again: <img> alt-attribute evidence and legacy plugin
     # elements are both handful-of-lookups on the already-built tree (#385, #386).
     result["images"] = extract_images(soup)
+    # The document's own <html lang> claim, read from the same tree (epic #1002).
+    result["html_lang"] = declared_language(soup)
     result["plugin_elements_count"] = unsupported_plugin_count(soup)
     # Same reasoning once more: one <meta> lookup on the already-built tree, and
     # the page-wide opt-in to the deprecated AJAX crawling scheme (#386).
