@@ -171,7 +171,9 @@ and one stable run ID per capture. Several explicit native captures may be
 active for a project at once; their records remain separate. Native captures
 for the same host reserve turns through the project-local shared gate, which
 caps their combined public dispatch rate at 2 requests per second while each
-run preserves its own configuration and resumability evidence.
+run preserves its own configuration and resumability evidence. A crawl without a project
+that writes a SQLite scan artifact uses the same gate, stored in the user state directory
+(`~/.config/seohead/.origin-pacing.sqlite`, or under `SEOHEAD_CONFIG_DIR` when set), so concurrent crawls of one host share one ceiling.
 An explicitly slower per-scan delay remains slower; a delay above 60 seconds
 remains valid and does not reserve the shared host slot until its own local
 turn arrives. A stale local pacing record that would wait beyond 60 seconds is

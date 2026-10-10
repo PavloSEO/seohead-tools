@@ -1015,6 +1015,20 @@ def crawl_site(
                     run_id=observer_run_id,
                 )
                 reporter = NativeRunReporter(project_root, observed["id"], progress)
+        if pacer is None:
+            # Outside a project the schedule lives in the user state directory, so
+            # concurrent crawls of one host still share one aggregate ceiling.
+            from math import isfinite
+
+            from seohead.projects.origin_pacing import ProjectOriginPacer
+
+            rate = crawl_config.effective_request_rate(settings)
+            pacer = ProjectOriginPacer(
+                None,
+                url,
+                minimum_delay_seconds=settings["speed"]["min_delay_seconds"],
+                max_requests_per_second=max(2.0, rate) if isfinite(rate) else 0.0,
+            )
         try:
             result = crawl_site_scan(
                 url,
@@ -1026,7 +1040,7 @@ def crawl_site(
                 progress=reporter or progress,
                 observation=reporter.enter if reporter is not None else None,
                 progress_snapshot=reporter.observe_counts if reporter is not None else None,
-                shared_request_gate=pacer.wait_turn if pacer is not None else None,
+                shared_request_gate=pacer.wait_turn,
                 proxy_route=proxy_route,
             )
         except BaseException as exc:
