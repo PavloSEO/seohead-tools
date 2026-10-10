@@ -127,6 +127,39 @@ def projsources_dialog(state, theme, lang):
     return dialog
 
 
+def wait_until(predicate, timeout=60):
+    """Run the event loop (core answers arrive on worker threads) until ``predicate`` holds or the timeout passes."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and not predicate():
+        QApplication.processEvents()
+        time.sleep(0.05)
+    QApplication.processEvents()
+
+
+def sourcekey_dialog(pid, theme, lang):
+    """Settings → Источники данных → one provider, answered by the real core CLI (read-only; the project is optional)."""
+    from seohead_desktop.app import MainWindow
+
+    if OPTIONS.get("core"):  # the status bar and the core service look the CLI up on PATH when the window is built
+        os.environ["PATH"] = os.pathsep.join([str(Path(OPTIONS["core"]).parent), os.environ.get("PATH", "")])
+    window = MainWindow(persistent=False)
+    window.prefs.set("view.theme", theme)
+    window.prefs.set("view.language", lang)
+    window.core_executable = OPTIONS.get("core") or window.core_executable
+    if OPTIONS.get("project"):
+        open_project(window, OPTIONS["project"])
+    dialog = SettingsDialog(window.prefs, window.settings_context(), None, "sources")
+    dialog._owner_window = window  # keeps the window (and its core service) alive while the dialog is captured
+    page = dialog._pages["sources"][1]
+    wait_until(lambda: page.loaded)
+    page.show_detail(pid)
+    wait_until(lambda: not page._busy and page.verified.get(pid) != "running")
+    dialog.capture_max = (1000, 760)
+    return dialog
+
+
 def build(name, width, height, store, theme="light", lang="ru"):
     kind, _, arg = name.partition(":")
     i18n.set_language(lang)
@@ -158,6 +191,8 @@ def build(name, width, height, store, theme="light", lang="ru"):
         from capture_sources import dialog
 
         return dialog(arg or "list")
+    if kind == "sourcekey":
+        return sourcekey_dialog(arg or "arsenkin", theme, lang)
     if kind == "menu":
         from seohead_desktop.app import MainWindow
 
@@ -200,7 +235,7 @@ def main(argv=None):
             widget = build(name, width, height, store, args.theme, args.lang)
             suffix = "" if args.lang == "ru" else f"-{args.lang}"
             path = args.out_dir / f"{name.replace(':', '-')}-{args.theme}-{size}{suffix}.png"
-            if name.startswith(("settings", "projsources", "sources")):
+            if name.startswith(("settings", "projsources", "sources", "sourcekey")):
                 image = render_modal(widget, width, height, args.theme, args.lang)
                 image.save(str(path))
             elif hasattr(widget, "render_image"):
