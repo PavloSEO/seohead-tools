@@ -809,3 +809,15 @@ def test_evidence_import_never_touches_network(tmp_path, monkeypatch):
     assert joined["summary"]["matched"] == 1
     assert result["ok"] is True
     assert attempts == []
+
+
+def test_duplicate_declared_metric_names_are_an_import_error():
+    manifest = _manifest()
+    manifest["metrics"] = [
+        {"name": "clicks", "type": "number", "unit": "count"},
+        {"name": "clicks", "type": "number", "unit": "count"},
+    ]
+    with pytest.raises(evidence_import.EvidenceImportError, match="unique"):
+        evidence_import.normalize_inline(
+            [{"url": "https://a.test/one", "clicks": "1"}], manifest=manifest
+        )

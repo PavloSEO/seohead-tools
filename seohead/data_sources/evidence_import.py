@@ -677,8 +677,8 @@ def resolve_mapping(
             ]
         elif row_shape == "gsc":
             known = [m for m in ("clicks", "impressions", "ctr", "position")]
-            rows = result.get("rows") or []
-            present = {key for row in rows[:50] for key in row if key != "keys"}
+            source_rows = rows or result.get("rows") or []
+            present = {key for row in source_rows[:50] for key in row if key != "keys"}
             metrics = [
                 {
                     "name": name,
@@ -913,6 +913,9 @@ def normalize_rows(
     url_spec = resolved["url"]
     dimensions = resolved["dimensions"]
     shape = resolved["row_shape"]
+    metric_names = [metric["name"] for metric in resolved["metrics"]]
+    if len(set(metric_names)) != len(metric_names):
+        raise EvidenceImportError("metric names must be unique in the declared mapping")
     site_origin = source.get("site_origin")
     url_dimension = url_spec.get("dimension")
     extra_dimensions = [

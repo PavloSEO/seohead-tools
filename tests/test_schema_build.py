@@ -317,3 +317,28 @@ def test_entity_diff_clean_when_jsonld_matches_facts():
     r = schema_build.build_schema(url="https://blog.example.com/how-to-seo", html=html)
     ed = r["diff_vs_existing"]["entity_diff"]
     assert not any(m["property"] == "headline" for m in ed["property_mismatches"])
+
+
+def test_build_schema_passes_its_timeout_to_the_fetch_layer(monkeypatch):
+    import seohead.recon.net as net
+    from seohead.checks import schema_build
+
+    seen = []
+
+    class _Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url):
+            raise OSError("offline")
+
+    def fake_http_client(timeout, **kw):
+        seen.append(timeout)
+        return _Client(), False
+
+    monkeypatch.setattr(net, "http_client", fake_http_client)
+    schema_build.build_schema(url="https://example.test/", timeout=7.5)
+    assert seen == [7.5]

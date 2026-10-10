@@ -178,3 +178,16 @@ def test_mcp_serializes_a_malformed_provider_result(monkeypatch):
     payload = json.loads(message[message.index("{") :])
     assert payload["ok"] is False
     assert "malformed response" in payload["error"]
+
+
+def test_crux_api_error_accepts_non_object_error_bodies():
+    import io
+    import urllib.error
+
+    from seohead.data_sources import crux
+
+    for body in (b"[1, 2]", b'{"error": "text"}', b'"plain"'):
+        exc = urllib.error.HTTPError(
+            "https://example.test/", 400, "Bad Request", {}, io.BytesIO(body)
+        )
+        assert crux._api_error(exc) == "Bad Request"

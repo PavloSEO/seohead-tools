@@ -83,7 +83,9 @@ def _api_error(exc: urllib.error.HTTPError) -> str:
         if len(raw) > MAX_RESPONSE_BYTES:
             return "CrUX error response exceeded the 2 MiB limit"
         body = json.loads(raw.decode("utf-8", "replace"))
-        return str(body.get("error", {}).get("message") or exc.reason)
+        error = body.get("error") if isinstance(body, dict) else None
+        message = error.get("message") if isinstance(error, dict) else None
+        return str(message or exc.reason)
     except ValueError:
         return str(exc.reason)
 
