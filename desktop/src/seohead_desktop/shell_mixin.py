@@ -41,7 +41,7 @@ class ShellMixin:
     placeholder_pages = {}  # navigation row -> «Раздел готовится» page (replaced per window)
 
     def build_placeholder_pages(self):
-        """Crawler, Methods and Link graph have no screen yet: an honest placeholder, no numbers, no invented data."""
+        """Link graph has no screen yet: an honest placeholder, no numbers, no invented data. Methods opens the redirect generator."""
         from .ui.kit import StatePanel
         from .ui.workspace import VIEW_IDS
 
@@ -52,11 +52,19 @@ class ShellMixin:
         placeholder_layout.setContentsMargins(0, 0, 0, 0)
         placeholder_layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
         self.pages.addWidget(self.scans_placeholder)
+        from .screens.crawler import CrawlerScreen
+        from .screens.tool_redirects import ToolRedirectsScreen
+
         for view in ("crawler", "methods", "graph"):
-            page = QWidget()
-            layout = QVBoxLayout(page)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
+            if view == "crawler":
+                page = CrawlerScreen()
+            elif view == "methods":  # the only tool built so far: the catalogue of «Методы/Инструменты» is not rebuilt yet
+                page = ToolRedirectsScreen(self)
+            else:
+                page = QWidget()
+                layout = QVBoxLayout(page)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.addWidget(StatePanel("partial", "Раздел готовится", "Экран появится в одной из следующих версий приложения."))
             self.pages.addWidget(page)
             self.placeholder_pages[VIEW_IDS.index(view)] = page
 

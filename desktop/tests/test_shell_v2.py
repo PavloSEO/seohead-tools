@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import QLabel
 from seohead_desktop import theming
 from seohead_desktop.app import MainWindow, load_theme
 from seohead_desktop.qt import app as qt_app
+from seohead_desktop.screens.crawler import CrawlerScreen
 from seohead_desktop.ui.settings.dialog import SettingsDialog
 from seohead_desktop.ui.shell import ROLE_COUNT, ROLE_DOT, ROLE_ID
 from tests._qt import sweep_widgets
@@ -162,13 +163,28 @@ class ShellV2Tests(unittest.TestCase):
     def test_new_sections_open_the_placeholder_without_numbers(self):
         from seohead_desktop.ui.kit import StatePanel
 
-        for section in ("crawler", "methods", "graph"):
+        from seohead_desktop.screens.tool_redirects import ToolRedirectsScreen
+
+        self.assertTrue(self.window.navigation.select_section("methods"))  # the generator is the only tool built so far
+        page = self.window.pages.currentWidget()
+        self.assertIsInstance(page, ToolRedirectsScreen)
+        self.assertIn(page, self.window.placeholder_pages.values())
+        self.assertNotRegex("\n".join(label.text() for label in page.findChildren(QLabel)), r"#\d")
+
+        for section in ("graph",):
             self.assertTrue(self.window.navigation.select_section(section))
             page = self.window.pages.currentWidget()
             self.assertIn(page, self.window.placeholder_pages.values())
             panel = page.findChild(StatePanel)
             self.assertEqual(panel.title.text(), "Раздел готовится")
             self.assertNotRegex(panel.text.text() + panel.title.text(), r"#\d")
+
+        self.assertTrue(self.window.navigation.select_section("crawler"))
+        page = self.window.pages.currentWidget()
+        self.assertIn(page, self.window.placeholder_pages.values())
+        self.assertIsInstance(page, CrawlerScreen)
+        self.assertEqual(page.findChild(StatePanel).title.text(), "Краул без проекта пока не запускается")
+        self.assertNotRegex("\n".join(label.text() for label in page.findChildren(QLabel)), r"#\d")
 
     def test_items_that_need_a_project_are_locked_until_one_is_open(self):
         from seohead_desktop.ui.shell import ROLE_LOCKED
