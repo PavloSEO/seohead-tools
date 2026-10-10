@@ -125,12 +125,12 @@ def test_url_budget_and_running_worker_are_not_reported_as_site_causes(tmp_path)
         overrides={"limits.max_urls": 1},
         finalize=False,
     )
-    assert run.finish_reason == "url_limit"
+    assert run.finish_reason == "stopped_by_budget"
     with NativeScan.open(scan) as writer:
         writer.interrupt(run.finish_reason)
     stopped = handlers.crawl_diagnose(scan=str(scan))
     assert "budget_exhausted" in codes(stopped)
-    assert stopped["source"]["finish_reason"] == "url_limit"
+    assert stopped["source"]["finish_reason"] == "stopped_by_budget"
 
 
 def test_js_eligibility_and_unavailable_rendering_are_distinct(tmp_path):

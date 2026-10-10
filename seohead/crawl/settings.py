@@ -99,7 +99,7 @@ def bind_budgets_to_page_budget(settings: dict, explicit: set[str]) -> None:
         return
     defaults = DEFAULTS["limits"]
     if "limits.max_requests" not in explicit and limits["max_requests"] == defaults["max_requests"]:
-        limits["max_requests"] = BUDGET_REQUESTS_PER_PAGE * pages
+        limits["max_requests"] = min(BUDGET_REQUESTS_PER_PAGE * pages, MAX_REQUESTS_CEILING)
     if (
         "limits.max_crawl_seconds" not in explicit
         and limits["max_crawl_seconds"] == defaults["max_crawl_seconds"]
