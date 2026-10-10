@@ -49,11 +49,15 @@ the [rendering scenario](rendering.md) reports as "JS-dependent" is, for this au
 
 ```json
 {
-  "ai_bots": {"GPTBot": "allowed", "ClaudeBot": "allowed", "Google-Extended": "disallowed"},
-  "llms_txt": {"present": true, "mentions_brand": true, "entries": 14},
-  "citability": {"score": "partial", "reason": "answer split across collapsibles"}
+  "ai-bots-check": {"summary": {"blocked": "<n>", "allowed_explicit": "<n>", "allowed_default": "<n>"},
+                    "bots": [{"token": "GPTBot", "status": "allowed_default", "blocked_root": false}]},
+  "llms-txt-check": {"score": "<int>", "grade": "<letter>", "passed": "<int>", "total": "<int>",
+                     "stats": {"links": "<int>", "mentions_brand": "<bool>"}},
+  "citability-check": {"score": "<int>", "grade": "<letter>", "word_count": "<int>", "paragraphs": "<int>", "dimensions": "<object>"}
 }
 ```
+
+Keys are real. `ai-bots-check` status is `blocked`, `allowed_explicit` (named in robots.txt) or `allowed_default` (no rule against it). Values are placeholders.
 
 ## What it costs
 

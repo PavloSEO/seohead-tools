@@ -8025,7 +8025,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "d72de0a315c394834068638732f706afabff071752d3ff96ca7c50450f41a509",
+        "source_hash": "3054743bbf70d9092954ebeb8e5146430cea37c65d263349b451b8d443fde778",
         "title": "Scenario 54 \u2014 AI visibility: will an assistant cite this site"
       },
       "definitions": [
@@ -8045,7 +8045,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "d72de0a315c394834068638732f706afabff071752d3ff96ca7c50450f41a509",
+            "source_hash": "3054743bbf70d9092954ebeb8e5146430cea37c65d263349b451b8d443fde778",
             "title": "Scenario 54 \u2014 AI visibility: will an assistant cite this site"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -8245,7 +8245,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "1e3c0d789d149db6f872ea3683062b29f07381a5356572d7ea8bc3e5ad6adaca",
+        "source_hash": "38478bf347980f3ba404d4c55c193c83564ddf892ba9437e72b2517a6c7048c3",
         "title": "Canonical destinations: where a valid-looking tag actually lands"
       },
       "definitions": [
@@ -8265,7 +8265,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "1e3c0d789d149db6f872ea3683062b29f07381a5356572d7ea8bc3e5ad6adaca",
+            "source_hash": "38478bf347980f3ba404d4c55c193c83564ddf892ba9437e72b2517a6c7048c3",
             "title": "Canonical destinations: where a valid-looking tag actually lands"
           },
           "observed_at": "2026-09-09T00:00:00Z"
@@ -8289,7 +8289,7 @@
           "template": null,
           "urls": []
         },
-        "source_hash": "d1c8cb8352fa1570589dd6e596d574cd9fdfe8221a1c6f024cef30e1eed11dfc",
+        "source_hash": "aff10c7d06111118fefe28fcbd63361d8fa92ad5c220b57c81cf49323cb33caf",
         "title": "Scenario 11 \u2014 Canonicalised pages: how much of the site is deliberately not itself"
       },
       "definitions": [
@@ -8309,7 +8309,7 @@
               "template": null,
               "urls": []
             },
-            "source_hash": "d1c8cb8352fa1570589dd6e596d574cd9fdfe8221a1c6f024cef30e1eed11dfc",
+            "source_hash": "aff10c7d06111118fefe28fcbd63361d8fa92ad5c220b57c81cf49323cb33caf",
             "title": "Scenario 11 \u2014 Canonicalised pages: how much of the site is deliberately not itself"
           },
           "observed_at": "2026-09-09T00:00:00Z"
