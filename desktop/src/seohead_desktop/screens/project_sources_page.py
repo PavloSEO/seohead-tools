@@ -231,7 +231,7 @@ class ProjectSourcesPage(QWidget):
         self.access_button = self.header.add_action(access)
         save = QPushButton(tr("Сохранить связи"))
         save.setProperty("role", "primary")
-        save.setIcon(material_icon("save", "#FFFFFF"))
+        save.setIcon(material_icon("save", theming.roles()["on_primary"]))
         save.setEnabled(False)
         save.setToolTip(unavailable_text())
         self.save_button = self.header.add_action(save)
