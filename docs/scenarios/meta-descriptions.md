@@ -11,7 +11,7 @@ speeds, so counting them together is how a two-day job becomes a two-week one.
 
 ## Covers
 
-- **Meta Description** — Missing · Multiple · Duplicate · Over 155 Characters · Below 70 Characters · Over 985 Pixels · Below 400 Pixels · Outside <head>
+- **Meta Description** — Missing · Multiple · Duplicate · Over 155 Characters · Below 70 Characters · Over 985 Pixels · Below 400 Pixels (carried from an export, not judged) · Outside <head>
 
 ## The chain
 

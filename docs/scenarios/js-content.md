@@ -34,14 +34,14 @@ seohead render-check --url https://example.com/page
 
 The same snapshot is built from both documents — words, internal links, title, H1, canonical,
 JSON-LD types, and images including a CSS `background-image` that only computed styles resolve.
-Differences are reported against a materiality threshold: a third of the copy, or a third of the
+Differences are reported against a materiality threshold: 30% of the copy, or 30% of the
 internal links. Five widget words do not make a page JavaScript-dependent, and a check that says
 they do is a check nobody reads twice.
 
 Two findings belong to this scenario. Copy that exists only after rendering is JavaScript
 content. Hyperlinks that exist only after rendering are JavaScript links, and they cost more,
 because a link a crawler never sees is a page it never reaches. A raw response with zero internal
-links is reported whatever its share, since zero has no third.
+links is reported whatever its share, since zero has no share to measure.
 
 **3. Escalate the crawl for the templates that differ, not for the site.** The mechanics — probe
 two URLs per detected URL pattern, escalate only the patterns that differ, cap the render budget
