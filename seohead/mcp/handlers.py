@@ -4068,10 +4068,14 @@ def regions_tree(save_to: str | None = None) -> dict[str, Any]:
     return regions_core.fetch_tree(save_to=save_to)
 
 
-def spend_report(since: str | None = None) -> dict[str, Any]:
-    """Summarize recorded provider charges by source, operation, and day."""
+def spend_report(since: str | None = None, csv_path: str | None = None) -> dict[str, Any]:
+    """Summarize recorded provider charges by source, operation, and day, or with csv_path
+    write one CSV row per journal entry instead and return where it went."""
     from seohead.data_sources import spend as spend_core
 
+    if csv_path:
+        count = spend_core.write_csv(csv_path, since=since)
+        return {"ok": True, "csv": str(Path(csv_path).expanduser()), "rows": count, "since": since}
     return spend_core.report(since=since)
 
 
