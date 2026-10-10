@@ -824,6 +824,8 @@ Join an existing audit or scan to an offline URL-keyed CSV without a provider ca
 | `ignore_scheme` | `bool` | `False` |
 | `casefold_path` | `bool` | `False` |
 | `out_urls` | `str | None` | `None` |
+| `visits_column` | `str | None` | `None` |
+| `bounce_column` | `str | None` | `None` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -2143,12 +2145,12 @@ Join a saved private provider collection to a saved scan with no network; retain
 
 MCP name: `seo_provider_auth`
 
-Manage GSC read-only OAuth grants: import private file, refresh, or explicitly revoke. Never returns secrets.
+Manage GSC read-only OAuth grants: import private file, refresh, cancel a pending flow, or explicitly revoke. Never returns secrets.
 
 | Argument | Type | Default |
 |---|---|---|
 | `provider` | `str` | `required` |
-| `action` | `Literal['status', 'connect', 'refresh', 'disconnect', 'revoke']` | `'status'` |
+| `action` | `Literal['status', 'connect', 'refresh', 'cancel', 'disconnect', 'revoke']` | `'status'` |
 | `grant_file` | `str | None` | `None` |
 | `confirm` | `bool` | `False` |
 
@@ -2605,6 +2607,7 @@ Search one closed retained scan offline and create an indexed local NDJSON packa
 | `selector` | `str | None` | `None` |
 | `case_sensitive` | `bool` | `False` |
 | `include_snippets` | `bool` | `False` |
+| `kind` | `Literal['literal', 'regex']` | `'literal'` |
 
 **Cost** — network: no · writes files: yes · idempotent: no · spends money: no
 
@@ -2614,6 +2617,8 @@ The tool never fetches or reconstructs a body. Static and rendered are
 separate requests; a missing body remains unavailable rather than an
 absence. It returns only source identity, counts and output paths.
 ``include_snippets`` is opt-in and redacts common credential-shaped values.
+``kind="regex"`` treats ``query`` as a regular expression; a document
+that exceeds the per-document regex budget is unavailable, not absent.
 
 ### `scan-content-search-page`
 

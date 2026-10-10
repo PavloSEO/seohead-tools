@@ -441,6 +441,7 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             "mode",
             "representation",
             "selector",
+            "kind",
         ):
             if getattr(args, name, None) is not None:
                 kw[name] = getattr(args, name)
@@ -534,6 +535,12 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             value = getattr(args, flag, None)
             if value is not None:
                 kw[flag] = value
+        if getattr(args, "profile", None):
+            if getattr(args, "config", None):
+                raise ValueError("use --config or --profile, not both")
+            from seohead.crawl import profiles
+
+            kw["config"] = profiles.path_for(args.profile)
         from seohead.crawl import settings as crawl_config
 
         overrides: dict[str, Any] = {}
@@ -935,7 +942,14 @@ def _build_kwargs(cmd: str, args: argparse.Namespace) -> tuple[str, dict[str, An
             if value:
                 kw[key] = _split_list(value)
     elif cmd == "crawl-enrich":
-        for name in ("audit", "external_csv", "url_column", "out_urls"):
+        for name in (
+            "audit",
+            "external_csv",
+            "url_column",
+            "out_urls",
+            "visits_column",
+            "bounce_column",
+        ):
             value = getattr(args, name, None)
             if value:
                 kw[name] = value
@@ -1571,9 +1585,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument("--limit", type=int)
         sub.add_argument("--offset", type=int)
     if cmd == "scan-content-search":
-        sub.add_argument(
-            "--query", help="nonempty literal marker; regular expressions are unsupported"
-        )
+        sub.add_argument("--query", help="nonempty marker; a literal string unless --kind regex")
         sub.add_argument("--out-dir", help="new local content-search package directory")
         sub.add_argument(
             "--scope",
@@ -1581,6 +1593,11 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
             help="retained representation to search",
         )
         sub.add_argument("--mode", choices=("contains", "not_contains"))
+        sub.add_argument(
+            "--kind",
+            choices=("literal", "regex"),
+            help="query is a literal string (default) or a Python regular expression",
+        )
         sub.add_argument("--representation", choices=("static", "rendered"))
         sub.add_argument("--selector", help="CSS selector required only by selector_markup")
         sub.add_argument("--case-sensitive", action="store_true")
@@ -1665,6 +1682,16 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         )
         sub.add_argument("--config", help="path to a crawler config file (JSON)")
         sub.add_argument(
+            "--profile",
+            metavar="NAME",
+            help="crawl with a saved profile instead of --config; --set still applies",
+        )
+        sub.add_argument(
+            "--save-profile",
+            metavar="NAME",
+            help="store the --config file as profile NAME after validating it; does not crawl",
+        )
+        sub.add_argument(
             "--robots",
             choices=["respect", "report_only", "ignore"],
             help="obey, report-only, or skip robots.txt",
@@ -1745,6 +1772,13 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
         sub.add_argument(
             "--out-urls",
             help="write reliable external-only URLs as a list-mode input file",
+        )
+        sub.add_argument(
+            "--visits-column", help="CSV column with visit counts (analytics findings)"
+        )
+        sub.add_argument(
+            "--bounce-column",
+            help="CSV column with bounce rate, as a percentage or fraction (analytics findings)",
         )
     if cmd == "crawl-import":
         _source_flag(
@@ -2351,7 +2385,7 @@ def _add_flags(sub: argparse.ArgumentParser, cmd: str) -> None:
     if cmd == "provider-auth":
         _source_flag(sub, "--provider", help="OAuth provider (gsc)")
         sub.add_argument(
-            "--action", choices=("status", "connect", "refresh", "disconnect", "revoke")
+            "--action", choices=("status", "connect", "refresh", "cancel", "disconnect", "revoke")
         )
         _source_flag(
             sub, "--grant-file", help="private bounded JSON grant obtained through provider consent"
@@ -2661,6 +2695,7 @@ def build_parser() -> argparse.ArgumentParser:
     for action in (
         "list",
         "inspect",
+        "url-query",
         "url-detail",
         "link-inspect",
         "status",
@@ -2901,6 +2936,19 @@ def main(argv: list[str] | None = None) -> int:
     show_banner(cmd, quiet=getattr(args, "quiet", False))
     if cmd == "crawl-site" and getattr(args, "config_help", False):
         _print_config_help()
+        return 0
+    if cmd == "crawl-site" and getattr(args, "save_profile", None):
+        from seohead.crawl import profiles
+
+        if not getattr(args, "config", None):
+            print("error: --save-profile needs --config FILE", file=sys.stderr)
+            return 1
+        try:
+            stored = profiles.save(args.save_profile, args.config)
+        except profiles.ProfileError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(json.dumps({"profile": args.save_profile, "path": stored}, ensure_ascii=False))
         return 0
     try:
         handler_name, kwargs = _build_kwargs(cmd, args)

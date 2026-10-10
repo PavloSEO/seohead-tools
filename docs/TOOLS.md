@@ -393,7 +393,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-list` | Validates and lists metadata for `*.sqlite` files in one existing directory without reading retained body BLOBs. It stops at 10,000 files and 64 MiB of metadata, and reports unreadable candidates under `errors` rather than treating them as scans. | — |
 | `scan-inspect` | Reads one allowed table (`pages`, `links`, `forms`, `decisions`, `frontier`, `query_variants`, `context_items`, `responses`, `documents`, `resource_refs`, or `audit`) as a paginated view. At most 1,000 rows and 8 MiB of row payload are returned; `has_more`/`truncated` says when the caller must narrow or continue. | — |
 | `scan-url-detail` | Reads one exact native URL's bounded retained page, redacted request/response headers, redirect chain and forms. Query values and sensitive headers are redacted; HTML body bytes are not returned. Legacy and Screaming Frog sources name this evidence as unavailable. | — |
-| `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. Failures carry a machine-readable `reason_code`. | — |
+| `scan-url-query` | Server-side filter, sort and pagination over the whole `pages` table of one saved scan (up to 200 rows per call, projected columns, AND-combined filters from a fixed column and operator allow-list). Returns `total`, `filtered_total` (`null` with `filtered_total_state: capped` when the count exceeds its time budget), scan coverage labels and the `seohead.scan-url-query.v1` format. Sorting by `url`, `status_code`, `page_ordinal` or `url_id` uses indexes; any other column needs a filter leaving at most 100,000 rows, else `reason_code: sort_not_indexed`. `click_depth` is the shortest internal link path from the start page, computed per query from stored links (NULL = not reached by links); a scan that did not retain links fails with `reason_code: click_depth_unavailable`. Failures carry a machine-readable `reason_code`. | — |
 | `scan-link-inspect` | Reads an observed shortest path, cursor-paginated reverse inlinks, one retained document's per-link placement/heading context, or (`--view links`) the paged outgoing/incoming links of one URL. It returns scan identity and explicit partial/unavailable evidence; traversal, body and result sizes are bounded. | — |
 | `scan-status` | Separates queued, inflight, done, and excluded native frontier rows from committed page HTTP outcome classes and no-response records. It reports interrupted captures as unfinished; imported scans name their absent native frontier as unavailable rather than an empty queue. The scan is accepted by a light header/schema check and the response carries `validation: "light"`; `full_validation: true` (or earlier full validation of the same bytes) reports `"full"`. | — |
 | `scan-rendered-routes` | Reads stored eligible static/rendered `a[href]` route evidence offline. It never queues or fetches a route; relation is `unknown` until both representation coverages are complete. | — |
@@ -404,7 +404,7 @@ without deleting its scan. The exact arguments and defaults are in the generated
 | `scan-body-diff` | Compares matching retained body hashes from two validated scans; optional text output is bounded and only applies to compatible textual evidence. A changed body is not an SEO score or verdict. | — |
 | `scan-evidence` | Reads one bounded saved-evidence section: capabilities, corpus, structured data, rendered routes, resources, or timeline. It never fetches or replays a scan. | — |
 | `scan-extract` | Applies closed declarative extraction rules to retained complete bodies only. It is offline, body-retention limited, and does not persist the ad-hoc result. | — |
-| `scan-content-search` | Searches all retained complete textual documents offline for a literal string, including HEAD, raw HTML, body text, or CSS-selected markup. Static/rendered coverage is explicit: unavailable bodies stay unknown, never absent. GTM/GA4/analytics tags are useful audit inputs; a tag's presence does not prove it fired. | writes a new indexed local result package |
+| `scan-content-search` | Searches all retained complete textual documents offline for a literal string (or a Python regular expression with `kind="regex"`; a document over the regex time budget is unavailable, never absent), including HEAD, raw HTML, body text, or CSS-selected markup. Static/rendered coverage is explicit: unavailable bodies stay unknown, never absent. GTM/GA4/analytics tags are useful audit inputs; a tag's presence does not prove it fired. | writes a new indexed local result package |
 | `scan-content-search-page` | Reads at most 100 rows of that derived package using validated offsets and integrity checks, with unchanged global coverage counters. This operation never reopens or fetches the site. | — |
 | `marketing-inventory` | Correlates CTA and form/iframe fields per supplied DOM occurrence. It never fetches, submits forms, or inspects iframe contents; an explicit new output directory writes local JSON and formula-safe CSV. | optional local artifact write |
 | `scan-fragment-links` | Evaluates every fragment-bearing `a[href]` in retained complete HTML/DOM and reports whether each `#fragment` identifies a target in the retained destination document (WHATWG scroll-to-the-fragment matching: serialized fragment against ids and `<a name>` first, then the percent/UTF-8-decoded value against both, then `top`). Static and rendered representations are measured independently; missing, truncated, unsupported or budget-exhausted bodies stay named skips, never broken findings. It never fetches a destination. | — |
@@ -494,7 +494,7 @@ and spend-journal rules.
 |---|---|---|
 | `provider-registry` | Lists declared providers and their bounded operations; it does not verify credentials | no |
 | `provider-readiness` | Reports redacted credential-source states, supported operation routes and their shared JSON call-envelope schema, quota/privacy, and whether verification remains necessary. It makes no provider requests | no |
-| `provider-auth` | Manages a private GSC read-only OAuth grant: status, connect from a private grant file, explicit refresh, confirmed local disconnect, or confirmed remote revoke. It never returns OAuth material. | refresh/revoke only when requested |
+| `provider-auth` | Manages a private GSC read-only OAuth grant: status, connect from a private grant file, explicit refresh, cancel of a pending browser flow record (local only), confirmed local disconnect, or confirmed remote revoke. It never returns OAuth material. | refresh/revoke only when requested |
 | `provider-verify` | Performs one explicit read-only credential and optional target-access check. An authenticated account does not by itself prove access to a requested target. | provider read |
 | `provider-collect` | Performs one declared read-only operation and returns a versioned evidence envelope with complete, partial, failed, or skipped state. An optional restricted artifact directory keeps raw rows locally. | provider read; optional local artifact |
 | `provider-join` | Joins supplied crawl pages and collected evidence rows without changing a frontier. It preserves matched, crawl-only, external-only, and unkeyable populations. | no |
@@ -540,18 +540,18 @@ priority adjustment. It never changes a technical finding's severity. See the
 | `crtsh-subdomains` | Hosts named in public TLS certificates for a domain — subdomains nothing links to | free, no key |
 | `gsc-query` | Search Console: clicks, impressions, position and CTR per query or page, plus Google's own indexing verdict for one URL | free; needs OAuth against a property you own |
 | `webmaster-url-queries` | Yandex Webmaster query evidence for one URL or a bounded URL population; URL/query rows stay separate and caps are explicit | free within Webmaster quota; needs an own verified host |
+| `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
+| `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
+| `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
+| `gsc-archive` | Explicit local SQLite archive: offline `status`, `prepare` a property/date queue, bounded resumable `run`, or verified `backup`. Only prepare creates a database. Different grains are independent; never sum them. | only run calls Google; free API with quotas and configured GSC credentials |
 
 The Yandex query-analytics API provides its own rolling retention window. This route preserves
 the provider-returned daily buckets and does not advertise a caller-selected date range.
-| `miratext-analyze` | Start or resume bounded competitor text analysis; paid and keyword modes require explicit confirmation | paid provider; API key required |
 
 `miratext-analyze` returns a resumable hash while the provider queues work. An accepted result
 contains bounded `author_tables.words` and `author_tables.density_deviation` JSON arrays for
 direct CLI/MCP export or joining into a local report. Values, filters, and stopword handling keep
 the provider's stated units; an unknown or malformed final table is marked unavailable.
-| `crux-report` | CrUX current-window field LCP/INP/CLS p75 with official threshold findings, URL/origin and form-factor scope, collection dates; optional bounded URL sample/cache | free within Google API quota; needs a Google Cloud API key |
-| `indexnow-submit` | Push changed URLs to Bing, Yandex, Naver and Seznam. **Google has not joined IndexNow** | free; needs a self-generated key hosted on the site |
-| `gsc-archive` | Explicit local SQLite archive: offline `status`, `prepare` a property/date queue, bounded resumable `run`, or verified `backup`. Only prepare creates a database. Different grains are independent; never sum them. | only run calls Google; free API with quotas and configured GSC credentials |
 
 `gsc-archive --database ./analytics/search-console.sqlite --action prepare --site-url sc-domain:example.test --start-date 2025-06-01 --end-date 2026-09-01`
 creates the archive and queues availability checks without network calls. Dates are inclusive in
@@ -760,8 +760,10 @@ echo '{"url":"https://example.com"}' | seohead parse
 ```
 
 **Side effects only behind an explicit flag.** `--probe-paths` in
-`security-check` and the sitemap live-recheck are off by default: a recon
-tool must not knock where it was not asked to.
+`security-check` is off by default. The SF audit sitemap/robots
+live recheck (`--live-recheck` / `--no-live-recheck`) defaults to off in config, but it
+turns on automatically for crawl modes (`--crawl`, `--crawl-list`, `--load-crawl`) when no
+`--sitemap` is given; pass `--no-live-recheck` to keep it off.
 
 **MCP.** The same set under the `seo_*` names plus the `sf_*` audit tools and the
 `seo_semantics_*` tools (161 + 5 + 4):

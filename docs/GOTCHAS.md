@@ -45,8 +45,7 @@ input. Sources are the current code contracts, provider documentation, and
   `--domain`, `--path`, …) is present, stdin is never read: without that,
   `while read u; do seohead parse --url "$u"; done < urls.txt` would drink
   the whole file on the first iteration and process exactly one URL.
-- **`sf run` exit code 2 means critical findings** (not an error). `1` is a
-  real error; use `--fail-on critical` deliberately in CI.
+- **`sf run` exit code 2 means the crawl produced no usable data**, in any mode. With `--fail-on critical` or `warning` it also means findings at that severity are present. The default is `--fail-on none`, so a default run never fails on findings. `1` is a real error; use `--fail-on critical` deliberately in CI.
 - **`sf-analyzer` is a focused alias** for the same audit CLI; `seohead sf ...` keeps the whole
   toolkit under one entry point.
 

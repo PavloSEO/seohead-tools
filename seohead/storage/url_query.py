@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from . import APPLICATION_ID
+from . import APPLICATION_ID, click_depth
 
 FORMAT = "seohead.scan-url-query.v1"
 DEFAULT_LIMIT = 200
@@ -77,6 +77,11 @@ COLUMNS: dict[str, Column] = {
     "word_count": _pages("word_count", "int"),
     "text_ratio": _pages("text_ratio", "real"),
     "crawl_depth": _pages("crawl_depth", "int"),
+    # Derived per query from links (storage/click_depth.py), so it needs no schema column and works on old scans.
+    # ponytail: click depth is recomputed each query | ceiling: slow on very large link graphs | upgrade: persist it at finish with a schema version bump (issue #992).
+    "click_depth": Column(
+        "(SELECT cd.depth FROM temp.cd_depth cd WHERE cd.url_id=p.url_id)", "int"
+    ),
     "content_encoding": _pages("content_encoding", "text"),
     "charset": _pages("charset", "text"),
     "outlinks": _pages("outlinks", "int"),
@@ -333,6 +338,28 @@ def _open(path: str) -> tuple[sqlite3.Connection, dict[str, Any], bool]:
     return con, source, status_index
 
 
+def _filter_names(filters: list[Any]) -> set[str]:
+    return {
+        f["column"] for f in filters if isinstance(f, dict) and isinstance(f.get("column"), str)
+    }
+
+
+def _click_depth_check(con: sqlite3.Connection, names: set[str]) -> None:
+    """Build temp.cd_depth only when a request uses click_depth; refuse when the scan cannot support it."""
+    if "click_depth" not in names:
+        return
+    # The file stays read-only (mode=ro); only the temp database is written, so lift query_only for this step.
+    con.execute("PRAGMA query_only=OFF")
+    try:
+        click_depth.materialize(con)
+    except LookupError as exc:
+        raise QueryError(
+            "click_depth_unavailable", f"click_depth is not available: {exc}", "unavailable"
+        ) from exc
+    finally:
+        con.execute("PRAGMA query_only=ON")
+
+
 def _int(value: Any, name: str, low: int, high: int) -> int:
     if type(value) is not int or not low <= value <= high:
         raise QueryError("invalid_" + name, f"{name} must be an integer {low}..{high}")
@@ -444,6 +471,7 @@ def _query(
     con, source, status_index = _open(input_path)
     budget = _Budget(con)
     try:
+        _click_depth_check(con, {*columns, *([sort] if sort else []), *_filter_names(filters)})
         indexed = {n for n, c in COLUMNS.items() if c.indexed} | (
             {"status_code"} if status_index else set()
         )

@@ -61,7 +61,7 @@ Check these fields after the second run, in this order:
 |---|---|---|
 | `resumed` | top-level result / `run.crawl_resumed` in `audit.json` | `true` if `crawl_state.json` matched and was loaded; `false` if the crawl started over |
 | `discovery.resume_note` | top-level result | the exact reason — resumed with a queue/seen count, or why not |
-| `finish_reason` | top-level result / `run.crawl_finish_reason` in `audit.json` | `finished`, or why the crawl stopped: `interrupted`, `errors`, `url_limit`, `duration_limit`, `robots_unavailable`, `storage_backpressure` |
+| `finish_reason` | top-level result / `run.crawl_finish_reason` in `audit.json` | `finished`, or why the crawl stopped: `interrupted`, `errors`, `url_limit`, `request_limit`, `duration_limit`, `robots_unavailable`, `storage_backpressure`, `finalization_blocked` |
 
 A successful resume looks like:
 
@@ -106,7 +106,6 @@ Before a single request leaves the machine, a resume refuses by name:
 | `refusing to resume one crawl as another` | a `--url` was passed and it is not the start URL the artifact records |
 | `already finished` / `already failed` | the artifact reached a terminal lifecycle; a finished scan is immutable |
 | `a resume cannot restore them` | the crawl used credential headers, which the artifact stores only redacted |
-| `a resume cannot restore them` | the crawl used a persistent browser profile, whose browser state is not stored |
 | `is a derived reanalysis artifact` | the file came from `scan reanalyze`, not from a crawl |
 
 Pass `--producer-build <sha>` to name the build explicitly when this checkout cannot be verified
@@ -114,8 +113,9 @@ as the one that wrote the file.
 
 An ordinary `Set-Cookie` from a public site does not make the crawl credentialed. The resumed
 process starts a fresh anonymous cookie jar, records that fact in the scan provenance, and never
-stores a raw cookie value. This is different from operator-configured credential headers or a
-persistent browser profile, which remain refused because their access state cannot be restored.
+stores a raw cookie value. This is different from operator-configured credential headers, which remain refused
+because their access state cannot be restored. Persistent browser profiles are
+unavailable under the pinned renderer, so no resumable profile state exists.
 Older native scans whose old resume latch was caused by a saved redacted `Set-Cookie` observation
 are treated the same way only when their recorded configuration has neither of those access modes;
 an unexplained old latch remains refused.

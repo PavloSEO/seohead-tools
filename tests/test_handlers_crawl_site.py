@@ -1017,3 +1017,24 @@ def test_without_declared_segments_no_segments_summary_is_reported(monkeypatch, 
     out = handlers.crawl_site(url="https://example.com/", out_dir=str(tmp_path))
 
     assert out["segments"] == {}
+
+
+def test_list_mode_inside_a_project_defaults_to_the_project_scans_dir(tmp_path, monkeypatch):
+    from seohead.projects.workspace import create_project
+
+    root = tmp_path / "proj"
+    create_project(root, "https://owner.example.test/")
+    captured = {}
+
+    def fake(urls, **kwargs):
+        captured.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr("seohead.mcp.scan_handlers.crawl_list_scan", fake)
+    handlers.crawl_site(project=str(root), urls=["https://example.com/a"], approve_large_crawl=True)
+    assert captured["scan_out"].startswith(str(root / "scans"))
+
+
+def test_list_mode_without_a_project_still_needs_an_explicit_output(tmp_path):
+    with pytest.raises(ValueError, match="list mode has no default SQLite artifact"):
+        handlers.crawl_site(urls=["https://example.com/a"])

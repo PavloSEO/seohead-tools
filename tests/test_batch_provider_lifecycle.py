@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import socket
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from seohead.data_sources import credentials, gsc, oauth, providers
+from seohead.data_sources import credentials, gsc, oauth, oauth_flow, providers
 from seohead.storage.native_scan import NativeScan
 from tests.test_native_capture import _claim
 from tests.test_scan_native import _metadata, _record, _runtime
@@ -161,3 +162,96 @@ def test_gsc_replay_maps_page_dimension_and_keeps_raw_join_private(tmp_path, mon
     assert artifact["source"]["scan_uuid"] == scan_uuid
     assert artifact["join"]["joined"][0]["external"]["url"] == "https://example.test/"
     assert artifact["join"]["joined"][0]["external"]["keys"][0] == "synthetic query"
+
+
+def _flow_file(tmp_path):
+    return tmp_path / "config" / "gsc" / "oauth-flow.json"
+
+
+def test_flow_record_is_private_and_holds_no_grant_material(tmp_path):
+    path = _flow_file(tmp_path)
+    now = datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc)
+
+    record, state = oauth_flow.create_flow(path, now)
+
+    assert path.stat().st_mode & 0o777 == 0o600
+    stored = path.read_text(encoding="utf-8")
+    assert state not in stored
+    assert set(json.loads(stored)) == {
+        "flow_id",
+        "state_sha256",
+        "status",
+        "created_at",
+        "expires_at",
+    }
+    assert record["status"] == "waiting"
+    assert record["state_sha256"] == oauth_flow.hash_state(state)
+    for secret in ("synthetic-refresh-token", "synthetic-client-secret"):
+        assert secret not in stored
+
+
+def test_flow_expires_after_ten_minutes_without_a_write(tmp_path):
+    now = datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc)
+    record, _state = oauth_flow.create_flow(_flow_file(tmp_path), now)
+
+    assert oauth_flow.effective_status(record, now + timedelta(seconds=599)) == "waiting"
+    assert oauth_flow.effective_status(record, now + timedelta(seconds=600)) == "expired"
+
+
+def test_status_without_flow_keeps_the_pre_change_shape(tmp_path, monkeypatch):
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path / "config")
+
+    assert oauth.manage_grant("gsc", "status") == {
+        "ok": True,
+        "configured": False,
+        "access_verified": False,
+    }
+
+
+def test_cancel_marks_waiting_flow_and_repeat_cancel_is_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path / "config")
+    record, _state = oauth_flow.create_flow(_flow_file(tmp_path), datetime.now(timezone.utc))
+
+    first = oauth.manage_grant("gsc", "cancel")
+    second = oauth.manage_grant("gsc", "cancel")
+    status = oauth.manage_grant("gsc", "status")
+
+    assert first == {"ok": True, "flow": {"flow_id": record["flow_id"], "status": "cancelled"}}
+    assert second == first
+    assert status["flow"] == {
+        "flow_id": record["flow_id"],
+        "status": "cancelled",
+        "expires_at": record["expires_at"],
+    }
+    assert status["access_verified"] is False
+
+
+def test_cancel_does_not_revive_an_expired_flow(tmp_path, monkeypatch):
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path / "config")
+    oauth_flow.create_flow(_flow_file(tmp_path), datetime(2000, 1, 1, tzinfo=timezone.utc))
+
+    assert oauth.manage_grant("gsc", "cancel") == {
+        "ok": True,
+        "flow": {
+            "flow_id": json.loads(_flow_file(tmp_path).read_text())["flow_id"],
+            "status": "expired",
+        },
+    }
+
+
+def test_cancel_without_flow_is_a_normalized_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path / "config")
+
+    assert oauth.manage_grant("gsc", "cancel") == {"ok": False, "error": "no_active_flow"}
+
+
+def test_symlinked_flow_record_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(oauth, "CONFIG_ROOT", tmp_path / "config")
+    target = tmp_path / "elsewhere.json"
+    target.write_text("{}", encoding="utf-8")
+    path = _flow_file(tmp_path)
+    path.parent.mkdir(parents=True)
+    path.symlink_to(target)
+
+    with pytest.raises(ValueError, match="symlinks"):
+        oauth.manage_grant("gsc", "status")
