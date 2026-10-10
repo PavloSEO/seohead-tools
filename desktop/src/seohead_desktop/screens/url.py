@@ -84,6 +84,8 @@ COLUMNS = (
 COLUMN_WIDTHS = {1: 68, 2: 74, 3: 132, 5: 112, 6: 88, 7: 66, 8: 92, 9: 82}
 TITLE_WIDTH = 180
 DROP_ORDER = (9, 6, 8, 2, 7, 5, 4)   # columns that give way first when the table is narrow
+COMPACT_COLUMNS = (0, 1, 3)           # canvas Compact (800x800): address, HTTP, indexability only
+COMPACT_WINDOW = 900                  # the same breakpoint at which the navigation becomes a rail
 URL_MIN = 340
 SIDE_COLUMNS = (0, 1, 7, 6, 9)        # MainB: address, HTTP, words, inlinks, issues
 # group id, label, core filters (None: the core cannot filter it), hint issue, tooltip
@@ -583,9 +585,6 @@ class UrlScreen(Screen):
         self.foot_text.setProperty("text_style", "meta")
         foot_layout.addWidget(self.foot_text)
         foot_layout.addStretch(1)
-        self.speed = QLabel()
-        self.speed.setProperty("text_style", "meta")
-        foot_layout.addWidget(self.speed)
         self.prev = tool_button("chevron_left", "Предыдущая страница")
         self.next = tool_button("chevron_right", "Следующая страница")
         self.page_label = QLabel()
@@ -665,9 +664,10 @@ class UrlScreen(Screen):
         self._layout_panels()
 
     def _apply_columns(self):
-        self.speed.setVisible(self.table.width() >= 640)
         side = self.side_layout
         wanted = [c for c in range(len(COLUMNS)) if c not in self.user_hidden and (not side or c in SIDE_COLUMNS)]
+        if self.window().width() < COMPACT_WINDOW:
+            wanted = [c for c in wanted if c in COMPACT_COLUMNS]
         width = self.table.viewport().width() or self.width()
         used = URL_MIN + sum(COLUMN_WIDTHS.get(c, TITLE_WIDTH) for c in wanted if c != 0)
         for column in DROP_ORDER:
@@ -830,7 +830,7 @@ class UrlScreen(Screen):
         self.rows = payload.get("rows") or []
         self.total = payload.get("total") if type(payload.get("total")) is int else None
         self.filtered = payload.get("filtered_total") if payload.get("filtered_total_state") == "exact" else None
-        self.speed.setText(trf("страница за {s} с · в памяти {n} строк", s=f"{(payload.get('elapsed_ms') or 0) / 1000:.1f}".replace(".", ","), n=len(self.rows)))
+        self.foot_text.setToolTip(trf("страница за {s} с · в памяти {n} строк", s=f"{(payload.get('elapsed_ms') or 0) / 1000:.1f}".replace(".", ","), n=len(self.rows)))
         if payload.get("state") == "partial":
             self.note.setText(tr("Ядро остановило обход по времени: показаны первые строки, найденные к этому моменту."))
             self.note.show()
@@ -871,7 +871,7 @@ class UrlScreen(Screen):
         self._set_table_state(panel)
         self._clear_detail()
         self._update_footer()
-        self.speed.setText("")
+        self.foot_text.setToolTip("")
         self.page_label.setText("")
         self.prev.setEnabled(False)
         self.next.setEnabled(False)
