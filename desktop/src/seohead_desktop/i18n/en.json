@@ -1432,7 +1432,7 @@
  "Исключить": "Exclude",
  "Удалить выбранное": "Delete selected",
  "Ядро хранит два списка и не учитывает порядок правил.": "The core keeps two lists and ignores rule order.",
- "Не обходить файлы типов": "Do not crawl file types",
+ "Типы файлов": "File types",
  "Как ядро представляется сайту": "How the core introduces itself to the site",
  "Как ядро представляется сайту. Свой текст ждёт доработки.": "How the core introduces itself to the site. A custom text waits for development.",
  "Заголовки, доступ, прокси": "Headers, access, proxy",
