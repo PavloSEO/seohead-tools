@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from seohead.checks.custom_extract import run_extraction, run_extractor
+from seohead.checks.custom_extract import check_sample, run_extraction, run_extractor
 
 
 def _doc(url, html, ok=True, rendered=False):
@@ -151,3 +151,62 @@ def test_run_extraction_applies_every_extractor():
     assert out["ok"] is True
     names = [e["name"] for e in out["extractors"]]
     assert names == ["price", "title"]
+
+
+def test_check_sample_returns_values_from_saved_html_without_a_scan():
+    html = '<div class="price">$19.99</div><h1>Title</h1>'
+    result = check_sample(
+        html,
+        [
+            {"name": "price", "mode": "css", "query": ".price", "output": "text"},
+            {"name": "title", "mode": "xpath", "query": "//h1/text()", "output": "text"},
+        ],
+        url="https://example.com/saved",
+    )
+    assert result["ok"] is True
+    assert result["url"] == "https://example.com/saved"
+    assert result["representation"] == "static_markup"
+    by_name = {e["name"]: e for e in result["extractors"]}
+    assert by_name["price"]["values"] == ["$19.99"]
+    assert by_name["price"]["count"] == 1
+    assert by_name["price"]["reason"] is None
+    assert by_name["title"]["values"] == ["Title"]
+
+
+def test_check_sample_reports_no_match_as_a_reason_not_a_clean_empty():
+    result = check_sample("<p>nothing here</p>", [{"name": "price", "query": ".price"}])
+    extractor = result["extractors"][0]
+    assert extractor["values"] == []
+    assert extractor["reason"] == "no_match"
+
+
+def test_check_sample_reports_empty_html_distinctly_from_no_match():
+    result = check_sample("   ", [{"name": "price", "query": ".price"}])
+    assert result["extractors"][0]["reason"] == "empty_html"
+    assert result["extractors"][0]["values"] == []
+
+
+def test_check_sample_reports_budget_exceeded_and_keeps_the_run_finishing():
+    result = check_sample(
+        "a" * 30 + "c",
+        [{"name": "evil", "mode": "regex", "query": r"(a+)+b", "output": "text"}],
+        timeout_seconds=0.3,
+    )
+    extractor = result["extractors"][0]
+    assert extractor["reason"] == "budget_exceeded"
+    assert extractor["values"] == []
+    assert any("exceeded" in note for note in extractor["notes"])
+
+
+def test_check_sample_surfaces_the_regex_caveat():
+    result = check_sample(
+        "<div>price: 100</div>",
+        [{"name": "p", "mode": "regex", "query": r"price:\s*(\d+)", "output": "group"}],
+    )
+    assert result["extractors"][0]["values"] == ["100"]
+    assert any("raw HTML" in note for note in result["extractors"][0]["notes"])
+
+
+def test_check_sample_rejects_an_invalid_extractor_spec():
+    with pytest.raises(ValueError):
+        check_sample("<p>x</p>", [{"name": "bad", "mode": "jq", "query": "."}])

@@ -250,3 +250,54 @@ def run_extraction(
             run_extractor(documents, spec, timeout_seconds=timeout_seconds) for spec in extractors
         ],
     }
+
+
+def check_sample(
+    html: str,
+    extractors: list[dict[str, Any]],
+    *,
+    url: str = "",
+    timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+) -> dict[str, Any]:
+    """Try extractors on one saved HTML document, without a scan.
+
+    ``html`` is the markup the caller already holds (for example a saved page);
+    ``url`` is only a label in the output. Nothing is fetched. Each result
+    carries the values found and a ``reason`` for an empty outcome:
+    ``budget_exceeded`` (the extractor was aborted), ``empty_html`` (no markup
+    was supplied), ``no_match`` (the markup was read and the query matched
+    nothing), or ``None`` when values were found.
+    """
+    document = {"url": url, "ok": True, "html": html or "", "rendered": False}
+    report = run_extraction([document], extractors, timeout_seconds=timeout_seconds)
+    has_markup = bool(document["html"].strip())
+
+    results = []
+    for extractor in report["extractors"]:
+        row = extractor["rows"][0]
+        if row["budget_exceeded"]:
+            reason = "budget_exceeded"
+        elif not has_markup:
+            reason = "empty_html"
+        elif row["count"] == 0:
+            reason = "no_match"
+        else:
+            reason = None
+        results.append(
+            {
+                "name": extractor["name"],
+                "mode": extractor["mode"],
+                "output": extractor["output"],
+                "query": extractor["query"],
+                "values": row["values"],
+                "count": row["count"],
+                "reason": reason,
+                "notes": extractor["notes"],
+            }
+        )
+    return {
+        "ok": True,
+        "url": url,
+        "representation": _representation([document]),
+        "extractors": results,
+    }
