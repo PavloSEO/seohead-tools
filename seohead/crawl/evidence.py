@@ -189,8 +189,6 @@ def _row(
         # a native Screaming Frog export carries none of these four by default,
         # so they stay blank there and the checks skip honestly (see rules.py).
         "Content-Encoding": record.content_encoding,
-        # Native-crawl only (#1022): head resources that block first paint, one URL per line.
-        "Render Blocking Resources": record.render_blocking,
         # Native-crawl only (#385): the raw HTTP "Refresh" response header, distinct
         # from a <meta http-equiv="refresh"> element (META_REFRESH_REDIRECT).
         "Refresh": record.http_refresh,

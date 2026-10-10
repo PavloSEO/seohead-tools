@@ -128,7 +128,6 @@ INTERNAL_FIELD_MAP: dict[str, list[str]] = {
     # under one of these names. See seohead/sf/core/lighthouse.py for which
     # static Lighthouse audit each field feeds.
     "content_encoding": ["Content-Encoding", "Content Encoding"],
-    "render_blocking": ["Render Blocking Resources"],
     "meta_charset": ["Meta Charset", "Charset"],
     "doctype": ["Doctype", "Doctype Declaration"],
     "viewport": ["Viewport", "Meta Viewport", "Mobile Viewport"],
