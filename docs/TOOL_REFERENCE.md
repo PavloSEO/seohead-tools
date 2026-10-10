@@ -786,7 +786,7 @@ Build one comparable facts table (schema facts.v1) across several sites from cra
 
 MCP name: `seo_compare_crawls`
 
-Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint sets per finding: entered (new problem on a page that existed before), left (the URL was fetched by both crawls and no longer matches — a real fix), appeared (a genuinely new page with a finding), disappeared (not rechecked: the URL was not fetched by both crawls, so a missing finding proves nothing). A partial after crawl never turns an unfetched URL into a fix. A scan path may also be its `.audit-v2.sqlite` companion; the native scan it belongs to is read and a diagnostic says so. "left" and "disappeared" look identical in a naive diff and mean opposite things. Optional ``correspondence`` is a closed url-correspondence.v1 object (or local JSON path) declaring origin and explicit URL pairs for a migration; it never infers pairs from titles or content and adds a release_review.v1 facts/finding artifact. Refuses a known difference in results-affecting settings unless ``force`` is true; partial-crawl warnings remain attached to the historical result.
+Diff two audit documents (dict, JSON path, or scan.v1 SQLite path) into four disjoint sets per finding: entered (new problem on a page that existed before), left (the page is still crawled and no longer matches — a real fix), appeared (a genuinely new page with a finding), disappeared (the page is not in this crawl at all, so a missing finding proves nothing). "left" and "disappeared" look identical in a naive diff and mean opposite things. Optional ``correspondence`` is a closed url-correspondence.v1 object (or local JSON path) declaring origin and explicit URL pairs for a migration; it never infers pairs from titles or content and adds a release_review.v1 facts/finding artifact. Refuses a known difference in results-affecting settings unless ``force`` is true; partial-crawl warnings remain attached to the historical result.
 
 | Argument | Type | Default |
 |---|---|---|
@@ -2096,10 +2096,15 @@ Record supplied evidence for one checklist item without executing its operation.
 
 expected_revision prevents an overwrite of newer checklist history. The record is
 validated against the item's scope and evidence contract, then the returned status names
-remaining, blocked and manual-review work. A ``not_applicable`` record is a reviewed
-exclusion: it requires a reason, a reviewer and an inspectable evidence basis (a
-project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
-``pending_exclusion`` inside the denominator. This never makes a network request.
+remaining, blocked and manual-review work. Accepted shapes, all with a ``reason``:
+automatic check ``{"status": "succeeded", "reason", "artifact"}`` where artifact is a
+saved scan under ``scans/`` that proves the check ran (scan.v1 or streamed audit.v2);
+attempt ``{"status": "failed" | "unavailable" | "running", "reason"}``; manual signoff
+``{"status": "succeeded", "reason", "reviewer", "signoff": true}``; reviewed artifact
+``{"status": "succeeded", "reason", "reviewer", "review": "approved", "artifact"}``
+under ``reports/``; reviewed exclusion ``{"status": "not_applicable", "reason",
+"reviewer", "artifact" or "evidence"}``, which otherwise stays ``pending_exclusion``
+inside the denominator. This never makes a network request.
 
 ### `project-view-list`
 
