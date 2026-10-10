@@ -2156,5 +2156,20 @@
  "Именованные профили скана и профиль по умолчанию в ядре": "Named scan profiles and the default profile in the core",
  "Проект локальный: участников нет.": "The project is local: no members.",
  "проект хранится локально": "the project is stored locally",
- "Источники": "Sources"
+ "Источники": "Sources",
+ "Title изменён": "Title changed",
+ "{d} слов": "{d} words",
+ "Без значимых изменений": "No significant changes",
+ "В сканах нет этого URL": "This URL is not in the scans",
+ "Не найден в скане": "Not found in scan",
+ "Не удалось прочитать историю": "Could not read the history",
+ "Ни один сохранённый скан проекта не содержит этот адрес.": "No saved scan of the project contains this address.",
+ "Ответ 5xx в скане: время и слова там не сохранены — «Нет данных», а не ноль.": "A 5xx answer in the scan: its time and word count were not saved — shown as No data, not zero.",
+ "Ответ {now} (было {was})": "Answer {now} (was {was})",
+ "Первое появление": "First appearance",
+ "Скан {n} из {total}": "Scan {n} of {total}",
+ "Читаю историю URL…": "Reading URL history…",
+ "Ядро не вернуло ответ": "The core returned no answer",
+ "скана с ответом 200": "of scans with a 200 answer",
+ "Входящие ссылки по сканам": "Incoming links across scans"
 }
