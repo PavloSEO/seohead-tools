@@ -57,6 +57,7 @@ SOURCE_CARDS = (
     ("sf", "bug_report", "Screaming Frog", "Недоступно в этой сборке"),
 )
 SOURCE_NAMES = {key: name for key, _icon, name, _text in SOURCE_CARDS}
+ASIDE_WIDTH = 300  # the «Что произойдёт» summary column; the options column takes the rest
 FIELD_TITLES = {
     "rps": "Запросов/с", "threads": "Потоки", "limit": "Лимит URL", "depth": "Глубина", "requests": "Лимит запросов",
     "minutes": "Время скана", "sitemap": "Адрес sitemap", "robots": "robots.txt", "min_delay": "Минимальная пауза",
@@ -211,7 +212,8 @@ class NewScanDialog(QDialog):
         layout.addWidget(profile)
         layout.addWidget(waiting_badge(ISSUE_PROFILES))
         self.problem_icon = MaterialIconLabel("error", 18, color="role:error")
-        self.problem = ElidedLabel()
+        self.problem = QLabel()  # wraps to two lines instead of eliding the reason
+        self.problem.setWordWrap(True)
         self.problem.setObjectName("scanValidationFeedback")
         self.problem.setProperty("field_error", True)
         self.problem.setProperty("text_style", "meta")
@@ -240,11 +242,12 @@ class NewScanDialog(QDialog):
             self.stack.setCurrentIndex(1)
         else:
             error = getattr(host, "_crawl_descriptor_error", None)
+            layout = self.stack.widget(0).layout()
+            layout.removeWidget(self.state)  # otherwise the replaced panel stays visible until it is deleted
             self.state.deleteLater()
             kind, title, text = (("error", "Настройки ядра недоступны", error) if error
                                  else ("loading", "Читаем настройки ядра…", "Параметры скана берутся из crawl-describe-settings."))
             self.state = StatePanel(kind, title, text or "")
-            layout = self.stack.widget(0).layout()
             layout.insertWidget(1, self.state)
             i18n.retranslate(self.state)
             self.stack.setCurrentIndex(0)
@@ -341,12 +344,14 @@ class NewScanDialog(QDialog):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        # columns follow the left pane (dialog minus the fixed aside and the 20 px gutters), not the whole dialog
+        pane = self.width() - ASIDE_WIDTH - 40
         if getattr(self, "cards", None):
-            columns = 4 if self.width() >= 900 else 2
+            columns = 4 if pane >= 760 else 2
             if columns != self._card_columns:
                 self._layout_cards(columns)
         if getattr(self, "option_items", None):
-            columns = 2 if self.width() >= 900 else 1
+            columns = 2 if pane >= 640 else 1
             if columns != self._option_columns:
                 self._layout_options(columns)
 
@@ -380,7 +385,8 @@ class NewScanDialog(QDialog):
         listing = QVBoxLayout(self.list_block)
         listing.setContentsMargins(0, 0, 0, 0)
         listing.setSpacing(6)
-        title = ElidedLabel(tr("Список URL · по одному в строке"))
+        title = QLabel(tr("Список URL · по одному в строке"))
+        title.setWordWrap(True)
         title.setProperty("text_style", "control")
         from_file = QPushButton(tr("Из файла .txt / .csv"))
         from_file.setObjectName("scanListFile")
@@ -392,10 +398,11 @@ class NewScanDialog(QDialog):
         paste.setProperty("size", "sm")
         paste.setIcon(icon("content_paste"))
         paste.clicked.connect(self._list_paste)
-        listing.addWidget(hbox(title, from_file, paste, stretch=(title,)))
+        listing.addWidget(flow(title, from_file, paste))
         self.list_edit = QPlainTextEdit(draft.list_text)
         self.list_edit.setObjectName("scanListText")
         self.list_edit.setAccessibleName(tr("Список URL"))
+        self.list_edit.setPlaceholderText("https://site.ru/catalog/")
         self.list_edit.setMinimumHeight(76)
         self.list_edit.setMaximumHeight(96)
         self.list_edit.textChanged.connect(self._list_typed)
@@ -490,7 +497,7 @@ class NewScanDialog(QDialog):
     def _aside(self):
         aside = QFrame()
         aside.setObjectName("scanAside")
-        aside.setFixedWidth(300)
+        aside.setFixedWidth(ASIDE_WIDTH)
         layout = QVBoxLayout(aside)
         layout.setContentsMargins(16, 14, 16, 14)
         layout.setSpacing(8)

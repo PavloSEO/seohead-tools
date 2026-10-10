@@ -248,6 +248,12 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
             None,
             entry("search", "Найти в таблице", self.focus_search, "⌘F"),
         ])
+        agent_menu = self.menuBar().addMenu("Агент")
+        agent_menu.addAction("Подключить агента…", self.show_agent_connection)
+        help_menu = self.menuBar().addMenu("Справка")
+        self.help_action = help_menu.addAction("Как работать с SEOHEAD…", self.show_help)
+        help_menu.addAction("Горячие клавиши…", self.open_shortcuts)
+        help_menu.addAction("Справка по разделам", lambda: self.show_screen("help"))
         view_menu = self.menuBar().addMenu("Вид")
         self.panel_actions = {}
         for name, widget in [("Навигация", self.navigation), ("Сводка", self.overview), ("Инспектор URL", self.inspector)]:

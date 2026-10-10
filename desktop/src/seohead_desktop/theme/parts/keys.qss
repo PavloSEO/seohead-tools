@@ -8,3 +8,5 @@ QFrame[set_row="true"] QLabel[kbd] { min-width: 12px; height: 22px; padding: 0 5
 QFrame[set_row="true"] QLabel[kbd="bad"] { border-color: $error; }
 QFrame[set_row="true"] QLabel[kbd_prompt] { color: $on_selected; font-size: ${font_meta}px; font-weight: 500; background: transparent; }
 QFrame[set_row="true"][conflict="true"] { background: $error_hover; }
+/* board: action names are body text (400), not control weight */
+QFrame[shortcut="true"] QLabel[text_style="control"] { font-size: ${font_body}px; font-weight: 400; }

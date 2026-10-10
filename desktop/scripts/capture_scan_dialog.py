@@ -1,7 +1,7 @@
 """Screens of the «Новый скан» family for scripts/capture_screens.py: the dialog (ScanDialog/ScanList), its settings window
 (Sc*) and the one-line launcher (QuickScan). Each is painted over the real application window, as in the canvas.
 
-  newscan[:site|sitemap|list|sf|rpsbad|ready]      the dialog; list uses real URLs of the core fixtures
+  newscan[:site|sitemap|list|sf|rpsbad|ready]      the dialog; list leaves the URL box empty and shows its placeholder
   scanset:<speed|scope|request|robots|render|extract|storage|profiles>[:bad|ignore|js]   the settings window
   quickscan[:idle|mode|params|outside|busy|noproject]   the launcher; «busy» starts a real scan on the project's own stand
 
@@ -11,15 +11,12 @@ is invented. ``busy`` needs the project's site to be served locally (the shop st
 
 from __future__ import annotations
 
-import json
 import time
-from pathlib import Path
 
 from PyQt5.QtCore import QPoint, Qt
 from PyQt5.QtGui import QColor, QPainter, QPixmap
 from PyQt5.QtWidgets import QApplication, QCheckBox, QLineEdit, QToolButton
 
-FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "core_fixtures"
 
 
 def pump(times=10, pause=0.02):
@@ -100,12 +97,6 @@ class Job:
             if arg == "sitemap":
                 dialog.sitemap_edit.setText(dialog.draft.target.rstrip("/") + "/sitemap.xml")
                 dialog.sitemap_edit.textEdited.emit(dialog.sitemap_edit.text())
-            if arg == "list":
-                rows = json.loads((FIXTURES / "url_query_page.json").read_text(encoding="utf-8")).get("rows", [])
-                host = dialog.draft.host
-                paths = [row["url"].split("://", 1)[-1].split("/", 1)[-1] for row in rows if row.get("url")][:4]
-                lines = [f"{dialog.draft.target.split('://')[0]}://{host}/{path}" for path in paths]
-                dialog.list_edit.setPlainText("\n".join(lines))
             if arg == "rpsbad":
                 type_into(dialog.findChild(QLineEdit, "scanRequestRate"), "3")
             if arg == "ready":
@@ -142,7 +133,10 @@ class Job:
         from seohead_desktop.screens.new_scan_draft import ScanDraft
 
         site = ((window.project_result or {}).get("project") or {}).get("site") or {}
-        return ScanDraft(window.crawl_descriptor, target=site.get("target") or "", host=site.get("host") or "",
+        descriptor = window.crawl_descriptor
+        if descriptor is None:  # no project: the saved core answer for the settings descriptor (tests/core_fixtures)
+            descriptor = json.loads((FIXTURES / "crawl_describe_settings.json").read_text(encoding="utf-8"))
+        return ScanDraft(descriptor, target=site.get("target") or "", host=site.get("host") or "",
                          project_directory=window.project_directory or "", prefs=window.prefs)
 
     # ---- «Быстрый запуск» -----------------------------------------------------------------------------------------
