@@ -18,9 +18,10 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
+from seohead.recon.net import UA
+
 HOST = "https://web.archive.org/cdx/search/cdx"
 TIMEOUT = 20
-USER_AGENT = "Mozilla/5.0 (compatible; SEOHEAD-Tools/3.0; +https://seohead.tech/seotools)"
 # The JSON response's first row names fields. These are the two fields this
 # adapter needs to build a snapshot and its archive URL; accepting a string
 # list that lacks them would turn an error-shaped array into clean zero evidence.
@@ -30,7 +31,7 @@ Fetcher = Callable[[str], str]
 
 
 def _default_fetcher(url: str) -> str:
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(url, headers={"User-Agent": UA})
     # The request URL is built from the fixed HTTPS CDX endpoint plus an encoded query string.
     with urllib.request.urlopen(request, timeout=TIMEOUT) as response:  # nosec B310
         return response.read().decode("utf-8")
