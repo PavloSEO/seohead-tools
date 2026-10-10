@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from pathlib import Path
@@ -80,3 +81,12 @@ def fsync_directory(path: str | Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+def file_sha256(path: str | Path) -> str:
+    """Return the SHA-256 hex digest of a regular file, streamed in 1 MiB chunks."""
+    digest = hashlib.sha256()
+    with open(path, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
