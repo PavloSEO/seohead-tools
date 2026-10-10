@@ -191,6 +191,7 @@ class WorkspaceTabs(QWidget):
     closeRequested = pyqtSignal(str)
     newRequested = pyqtSignal()
     duplicateRequested = pyqtSignal(str)
+    settingsRequested = pyqtSignal()
 
     def __init__(self, parent=None, *, max_tabs=MAX_WORKSPACE_TABS):
         super().__init__(parent)
@@ -243,11 +244,12 @@ class WorkspaceTabs(QWidget):
         self.overflow_button.setObjectName("workspaceOverflow")
         self.overflow_button.setIcon(material_icon("tune"))
         self.overflow_button.setFixedSize(28, 28)
-        self.overflow_button.setAccessibleName("Все рабочие вкладки и действия")
-        self.overflow_button.setToolTip("Все рабочие вкладки и действия")
-        self.overflow_button.setPopupMode(QToolButton.InstantPopup)
+        self.overflow_button.setAccessibleName("Настроить вкладки и панели")
+        self.overflow_button.setToolTip("Настроить вкладки и панели")
+        self.overflow_button.clicked.connect(self.settingsRequested)
         self.menu = QMenu(self.overflow_button)
-        self.overflow_button.setMenu(self.menu)
+        self.overflow_button.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.overflow_button.customContextMenuRequested.connect(self._show_workspace_list)
         self.menu.aboutToShow.connect(self._rebuild_menu)
         layout.addWidget(self.overflow_button)
         self.tabbar.currentChanged.connect(self._sync_selected)
@@ -497,6 +499,10 @@ class WorkspaceTabs(QWidget):
     def _rename_index(self, index):
         if 0 <= index < self.tabbar.count():
             self.request_rename(self.tabbar.tabData(index))
+
+    def _show_workspace_list(self, position):
+        self._rebuild_menu()
+        self.menu.popup(self.overflow_button.mapToGlobal(position))
 
     def _show_context_menu(self, position):
         index = self.tabbar.tabAt(position)

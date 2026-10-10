@@ -295,6 +295,7 @@ class MainWindow(ShellMixin, ChromeMixin, PagesMixin, CommandsMixin, ProjectMixi
         self.workspace_tabs.newRequested.connect(self.new_workspace_tab)
         self.workspace_tabs.closeRequested.connect(self.close_workspace_tab)
         self.workspace_tabs.duplicateRequested.connect(self.duplicate_workspace_tab)
+        self.workspace_tabs.settingsRequested.connect(self.open_tab_settings)
         self.workspace_tabs.install_shortcuts(self)
         initial = WorkspaceContext(view_id="url")
         self._active_workspace_id = initial.id
