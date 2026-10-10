@@ -31,6 +31,7 @@ from .ui.presentation import ElidedLabel
 from .ui.settings.context import SettingsContext
 from .ui.settings.dialog import SettingsDialog
 from .ui.shell import NUMBERED_SECTIONS
+from .ui.shortcuts_sheet import ShortcutsSheet
 
 tr, trf, joined = i18n.tr, i18n.trf, i18n.joined
 
@@ -326,6 +327,13 @@ class ShellMixin:
         """Settings are a modal window over the application (sheet Settings), never a workspace tab."""
         SettingsDialog(self.prefs, self.settings_context(), self, section).exec_()
 
+    def open_shortcuts(self):
+        """Canvas «Shortcuts»: the active bindings as a modal sheet; editing and help are one click away."""
+        sheet = ShortcutsSheet(self.prefs, self)
+        sheet.settingsRequested.connect(lambda: self.open_settings("keys"))
+        sheet.helpRequested.connect(self.show_help)
+        sheet.exec_()
+
     def connect_preferences(self):
         self.prefs.changed.connect(self.apply_preference)
         shortcut = QAction("Настройки…", self)
@@ -345,7 +353,8 @@ class ShellMixin:
         self.expand_action.setShortcut(seqs.get("expand_table", none))
         self.find_shortcut.setKey(seqs.get("find_in_table", none))
         handlers = {"new_scan": self.scan_preview, "settings": self.open_settings, "stop_scan": self.cancel_active_work,
-                    "copy_url": self.copy_url_selection}
+                    "copy_url": self.copy_url_selection,
+                    "all_shortcuts": self.open_shortcuts}
         for old in getattr(self, "_bound_shortcuts", ()):
             old.setEnabled(False)
             old.deleteLater()
