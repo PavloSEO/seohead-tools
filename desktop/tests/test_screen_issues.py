@@ -1,6 +1,8 @@
+import importlib.util
 import os
 import re
 import unittest
+from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -103,6 +105,16 @@ class IssuesTests(IssuesBase):
     def test_unknown_reason_and_check_are_not_shown_raw(self):
         self.assertEqual(skip_reason("something unexpected"), "причина не указана ядром")
         self.assertEqual(check_name("BRAND_NEW_CHECK"), "Другая проверка")
+
+    def test_every_check_of_the_core_registry_has_a_name(self):
+        registry = Path(__file__).resolve().parents[2] / "seohead" / "sf" / "core" / "registry.py"
+        if not registry.is_file():
+            self.skipTest("core registry is not in this checkout")
+        spec = importlib.util.spec_from_file_location("core_registry", registry)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.assertGreater(len(module.CHECKS), 100)
+        self.assertEqual([code for code in module.CHECKS if check_name(code) == "Другая проверка"], [])
 
     def test_no_issue_numbers_and_no_service_footer_on_screen(self):
         self.screen.row_buttons[next(iter(self.screen.row_buttons))].click()

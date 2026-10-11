@@ -4981,6 +4981,12 @@ def project_prepare(
     )
 
 
+def project_competitors_add(directory: str, competitors: list) -> dict[str, Any]:
+    from seohead.projects.runtime import add_competitors
+
+    return add_competitors(directory, competitors)
+
+
 def project_start(
     directory: str,
     target: str,
@@ -6126,6 +6132,7 @@ _RAW_HANDLERS = {
     "tool_catalog": tool_catalog,
     "project_policy": project_policy,
     "project_prepare": project_prepare,
+    "project_competitors_add": project_competitors_add,
     "project_start": project_start,
     "skill_list": skill_list,
     "skill_show": skill_show,

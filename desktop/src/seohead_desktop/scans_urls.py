@@ -17,6 +17,7 @@ from .common import (  # noqa: F401
     CONSUMER_ID,
     PAGE_LIMIT,
     ROOT,
+    TASK_PAGE_LIMIT,
     configure_table,
     plain,
     scan_request_key,
@@ -36,6 +37,18 @@ class ScansUrlsMixin:
     task_total = None  # screens read these; the loaders below fill them (None = not loaded yet)
     task_detail_result = None
     task_detail_requested = None
+
+    def load_task_page(self, result):
+        """Work list: read the checklist page by page (the core caps a page), then show every task as one list."""
+        pagination = result.get("pagination") or {}
+        offset = pagination.get("offset", 0)
+        self._task_pages = (getattr(self, "_task_pages", []) if offset else []) + list(result.get("items") or [])
+        following = pagination.get("next_offset")
+        if following is not None and self.project_directory:
+            self.start_command("tasks", "seo_project_checklist_page",
+                               {"directory": self.project_directory, "limit": TASK_PAGE_LIMIT, "offset": following}, self.load_task_page)
+            return
+        self.load_tasks({"items": self._task_pages, "pagination": {**pagination, "offset": 0, "next_offset": None}})
 
     def load_tasks(self, result):
         rows = []

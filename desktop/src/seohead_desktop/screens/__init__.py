@@ -15,7 +15,7 @@ EXTRAS = {"start": "start:StartScreen", "onboarding": "onboarding:OnboardingScre
           "help": "help:HelpScreen", "new_tab": "new_tab:NewTabScreen", "fatal": "fatal:FatalStatesScreen",
           "semantics_io": "semantics_io:SemImportScreen", "tools": "tools:ToolsScreen",
           "semantics": "semantics:SemanticsScreen", "tool_run": "tool_run:ToolRunScreen",
-          "semimport": "sem_import:SemImportScreen"}
+          "semimport": "sem_import:SemImportScreen", "competitors": "competitors:CompetitorsScreen"}
 # top-bar widgets that a screen with ``chrome_free = True`` hides (SHELL-CANON §7)
 PROJECT_CHROME = ("project_button", "project_chevron", "scan_button", "scan_state_badge", "new_scan", "refresh_button")
 

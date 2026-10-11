@@ -47,6 +47,31 @@ class CoreDiscoveryTests(unittest.TestCase):
                     mock.patch.object(core_discovery.sys, "executable", str(Path(tmp) / "python")):
                 self.assertEqual(core_discovery.discover_core(None), cli)
 
+    def test_bundled_core_wins_over_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundled = _cli(tmp)
+            with mock.patch.object(core_discovery.bundle, "bundled_core_cli", return_value=Path(bundled)), \
+                    mock.patch.object(core_discovery.shutil, "which", return_value="/elsewhere/seohead"):
+                self.assertEqual(core_discovery.discover_core(None), bundled)
+
+    def test_core_next_to_the_interpreter_is_found_before_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sibling = _cli(tmp)
+            with mock.patch.object(core_discovery.bundle, "bundled_core_cli", return_value=None), \
+                    mock.patch.object(core_discovery.sys, "executable", str(Path(tmp) / "python")), \
+                    mock.patch.object(core_discovery.shutil, "which", return_value="/elsewhere/seohead"):
+                self.assertEqual(core_discovery.discover_core(None), sibling)
+
+    def test_path_is_used_before_the_source_venv_and_install_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            on_path = _cli(tmp)
+            with mock.patch.object(core_discovery.bundle, "bundled_core_cli", return_value=None), \
+                    mock.patch.object(core_discovery.sys, "executable", str(Path(tmp) / "missing" / "python")), \
+                    mock.patch.object(core_discovery.shutil, "which", return_value=on_path), \
+                    mock.patch.object(core_discovery, "SOURCE_VENV_CLI", Path(tmp) / "source" / "seohead"), \
+                    mock.patch.object(core_discovery, "COMMON_DIRECTORIES", ()):
+                self.assertEqual(core_discovery.discover_core(None), on_path)
+
     def test_non_executable_candidate_is_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "seohead"
