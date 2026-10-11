@@ -2096,10 +2096,15 @@ Record supplied evidence for one checklist item without executing its operation.
 
 expected_revision prevents an overwrite of newer checklist history. The record is
 validated against the item's scope and evidence contract, then the returned status names
-remaining, blocked and manual-review work. A ``not_applicable`` record is a reviewed
-exclusion: it requires a reason, a reviewer and an inspectable evidence basis (a
-project-relative ``artifact`` or an explicit ``evidence`` reference); anything else stays
-``pending_exclusion`` inside the denominator. This never makes a network request.
+remaining, blocked and manual-review work. Accepted shapes, all with a ``reason``:
+automatic check ``{"status": "succeeded", "reason", "artifact"}`` where artifact is a
+saved scan under ``scans/`` that proves the check ran (scan.v1 or streamed audit.v2);
+attempt ``{"status": "failed" | "unavailable" | "running", "reason"}``; manual signoff
+``{"status": "succeeded", "reason", "reviewer", "signoff": true}``; reviewed artifact
+``{"status": "succeeded", "reason", "reviewer", "review": "approved", "artifact"}``
+under ``reports/``; reviewed exclusion ``{"status": "not_applicable", "reason",
+"reviewer", "artifact" or "evidence"}``, which otherwise stays ``pending_exclusion``
+inside the denominator. This never makes a network request.
 
 ### `project-view-list`
 

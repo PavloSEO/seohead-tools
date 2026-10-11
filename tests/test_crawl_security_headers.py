@@ -10,11 +10,16 @@ import pytest
 from seohead.crawl import security_headers
 
 _ALL_PRESENT = [
+    ["strict-transport-security", "max-age=31536000"],
     ["content-security-policy", "default-src 'self'"],
     ["x-content-type-options", "nosniff"],
     ["x-frame-options", "SAMEORIGIN"],
     ["referrer-policy", "strict-origin-when-cross-origin"],
 ]
+
+
+def _without(name):
+    return [pair for pair in _ALL_PRESENT if pair[0] != name]
 
 
 def _store(pages):
@@ -70,6 +75,7 @@ def test_each_missing_header_fires_on_its_own_check_only():
 
 def test_frame_ancestors_in_csp_satisfies_x_frame_options():
     headers = [
+        ["strict-transport-security", "max-age=31536000"],
         ["content-security-policy", "frame-ancestors 'none'"],
         ["x-content-type-options", "nosniff"],
         ["referrer-policy", "no-referrer"],
@@ -79,13 +85,14 @@ def test_frame_ancestors_in_csp_satisfies_x_frame_options():
 
 
 def test_empty_header_value_counts_as_missing_for_csp():
-    headers = [["content-security-policy", "   "], *_ALL_PRESENT[1:]]
+    headers = [["content-security-policy", "   "], *_without("content-security-policy")]
     con = _store([(1, "https://e.test/", 200, "text/html", headers)])
     assert _fired(security_headers.evaluate(con)) == {"MISSING_CSP": ["https://e.test/"]}
 
 
 def test_repeated_header_names_are_combined_not_last_wins():
     headers = [
+        ["strict-transport-security", "max-age=31536000"],
         ["content-security-policy", "default-src 'self'"],
         ["content-security-policy", "frame-ancestors 'none'"],
         ["x-content-type-options", "nosniff"],
@@ -150,30 +157,40 @@ def test_evaluate_rejects_a_non_sqlite_connection():
 
 
 def test_missing_csp_fires_on_a_defect_and_stays_silent_on_clean_markup():
-    defect = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT[1:])])
+    defect = _store([(1, "https://e.test/", 200, "text/html", _without("content-security-policy"))])
     clean = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT)])
     assert "MISSING_CSP" in _fired(security_headers.evaluate(defect))
     assert "MISSING_CSP" not in _fired(security_headers.evaluate(clean))
 
 
 def test_missing_x_content_type_options_fires_on_a_defect_and_stays_silent_on_clean():
-    defect = _store(
-        [(1, "https://e.test/", 200, "text/html", [_ALL_PRESENT[0], *_ALL_PRESENT[2:]])]
-    )
+    defect = _store([(1, "https://e.test/", 200, "text/html", _without("x-content-type-options"))])
     clean = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT)])
     assert "MISSING_X_CONTENT_TYPE_OPTIONS" in _fired(security_headers.evaluate(defect))
     assert "MISSING_X_CONTENT_TYPE_OPTIONS" not in _fired(security_headers.evaluate(clean))
 
 
 def test_missing_x_frame_options_fires_on_a_defect_and_stays_silent_on_clean():
-    defect = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT[:2] + _ALL_PRESENT[3:])])
+    defect = _store([(1, "https://e.test/", 200, "text/html", _without("x-frame-options"))])
     clean = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT)])
     assert "MISSING_X_FRAME_OPTIONS" in _fired(security_headers.evaluate(defect))
     assert "MISSING_X_FRAME_OPTIONS" not in _fired(security_headers.evaluate(clean))
 
 
 def test_missing_referrer_policy_fires_on_a_defect_and_stays_silent_on_clean():
-    defect = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT[:3])])
+    defect = _store([(1, "https://e.test/", 200, "text/html", _without("referrer-policy"))])
     clean = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT)])
     assert "MISSING_REFERRER_POLICY" in _fired(security_headers.evaluate(defect))
     assert "MISSING_REFERRER_POLICY" not in _fired(security_headers.evaluate(clean))
+
+
+def test_missing_hsts_fires_on_a_page_that_sends_no_strict_transport_security():
+    headers = [h for h in _ALL_PRESENT if h[0] != "strict-transport-security"]
+    con = _store([(1, "https://e.test/", 200, "text/html", headers)])
+    assert _fired(security_headers.evaluate(con)) == {"MISSING_HSTS": ["https://e.test/"]}
+
+
+def test_hsts_is_read_from_the_final_response_not_a_redirect_hop():
+    con = _store([(1, "https://e.test/", 200, "text/html", _ALL_PRESENT)])
+    con.execute("UPDATE responses SET response_headers_redacted_json = '[]'")
+    assert _fired(security_headers.evaluate(con)) == {}

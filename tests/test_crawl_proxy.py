@@ -416,6 +416,7 @@ def test_legacy_and_sqlite_crawls_route_robots_and_pages_through_proxy(monkeypat
             "http.proxy_allow_private": True,
             "speed.min_delay_seconds": 0,
             "limits.max_urls": 1,
+            "limits.max_requests": 100,
             "sitemaps.auto_discover": True,
         }
         try:

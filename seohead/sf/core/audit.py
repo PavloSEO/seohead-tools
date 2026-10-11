@@ -172,7 +172,9 @@ def run_audit(
 
     # Declared-missing evidence is skipped before any check runs, so a check
     # that never fired cannot be mistaken for a check that found nothing.
-    ctx.skip_unsupported(set(exports.frames))
+    from seohead.sf.core.rules import native_check_ids
+
+    ctx.skip_unsupported(set(exports.frames), native=native_check_ids(ctx))
     # Fragment targets are resolved inside the retained destination document
     # (issue #827); an export keeps no destination DOM inventory, so the check
     # must be named unavailable rather than silently land in "ran clean".

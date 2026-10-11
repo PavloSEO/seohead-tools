@@ -563,11 +563,15 @@ def finish(
         _event(run, "finalizing", "finished" if state == "finished" else state)
         try:
             _save(root, document)
-            return
         except ValueError as exc:
             if not _contention(exc) or attempt + 1 == WRITE_ATTEMPTS:
                 raise
             _retry_delay(attempt)
+            continue
+        from .journal import note
+
+        note(root, source="scans", actor="agent", text=f"crawl {run_id} {state}: {finish_reason}")
+        return
 
 
 def finish_sitemap(directory: str | Path, run_id: str, result: dict) -> None:

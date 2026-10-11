@@ -832,6 +832,17 @@ def initialize_coverage(
     return coverage_status(directory)
 
 
+def ensure_goal_task(directory: str | Path, *, item_id: str, title: str) -> None:
+    """Create one manual custom task for an accepted goal; an existing task is kept as-is."""
+    catalogue = load_catalogue()
+    with _transaction(directory, None) as (_, project, document):
+        if item_id not in document["items"]:
+            _set(
+                document["items"],
+                _custom({"id": item_id, "title": title}, project["site"]["target"], catalogue),
+            )
+
+
 def update_item(directory: str | Path, item: dict, expected_revision: int) -> dict:
     """Add or edit one item, preserving definitions and result history."""
     if type(expected_revision) is not int:
@@ -890,6 +901,14 @@ def record_execution(
                 "revision": document["revision"] + 1,
             }
         )
+    from .journal import note
+
+    note(
+        directory,
+        source="agent",
+        actor="agent",
+        text=f"checklist {item_id}: {record.get('status')}",
+    )
     return coverage_status(directory)
 
 

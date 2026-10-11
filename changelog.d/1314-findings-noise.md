@@ -1,0 +1,1 @@
+- Native scans measure HSTS, mixed content and structured data from their own stored evidence, so a missing or stale SF export no longer reports them missing; `duplicate-check` marks a run with zero compared pairs as unmeasured; site-wide template findings (same chrome heading, low text ratio) are one finding with a page count (#1314).

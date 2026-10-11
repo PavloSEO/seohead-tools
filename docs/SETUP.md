@@ -258,10 +258,11 @@ which pages were actually crawled each time.
 Every finding lands in exactly one of four sets:
 
 - **entered** — a new problem on a page that was already being crawled;
-- **left** — the page is still crawled and no longer matches: a real fix;
+- **left** — the URL was fetched by both crawls and no longer matches: a real fix;
 - **appeared** — a genuinely new page, and it has a finding;
-- **disappeared** — the page is not in the later crawl at all, so a missing finding proves
-  nothing about whether it was fixed.
+- **disappeared** — not rechecked: the URL was not fetched by both crawls (the bucket key
+  stays `disappeared` for compatibility), so a missing finding proves nothing about whether
+  it was fixed.
 
 `left` and `disappeared` are the pair that matters. Confusing them is how "we fixed it" gets said
 about a page nobody re-checked.

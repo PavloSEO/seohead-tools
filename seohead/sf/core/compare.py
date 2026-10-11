@@ -10,13 +10,15 @@ So every finding lands in exactly one of four disjoint sets, keyed by the
 finding's own fingerprint plus the URL it was found on:
 
     entered      the URL existed in both crawls; it did not match before, matches now
-    left         the URL existed in both crawls; it matched before, does not match now
+    left         the URL was fetched by both crawls; it matched before, does not match now
     appeared     the URL is new to this crawl, and matches now
-    disappeared  the URL is gone from this crawl, and matched before
+    disappeared  not rechecked: the URL was not fetched by both crawls, so its
+                 earlier finding cannot be proven fixed or still present
 
-"left" is progress. "disappeared" is not progress — the URL that was broken is
-simply no longer part of what was measured, which is a different fact and must
-not be reported as a fix.
+"left" is progress, and only a URL fetched by both crawls can earn it. A URL the
+later crawl never fetched (a partial crawl, a budget stop) is "not rechecked":
+not measuring a page is a different fact from fixing it, so it is never reported
+as a fix. The key stays ``disappeared`` for compatibility.
 
 An audit-wide finding (no ``target_url`` — e.g. TITLE_TEMPLATED, which
 describes the crawl as a whole) has no page to appear or disappear, so it can
@@ -450,8 +452,8 @@ def preflight(before: Any, after: Any) -> list[str]:
         )
     if _run(after).get("crawl_partial"):
         warnings.append(
-            "after crawl is partial — a 'disappeared' finding may only mean the after "
-            "crawl did not reach that URL, not that the URL is gone"
+            "after crawl is partial — a 'disappeared' finding is not rechecked (the after "
+            "crawl did not fetch its URL), so it is not counted as fixed"
         )
     before_cfg = _header(before).get("run", {}).get("crawl_config")
     after_cfg = _header(after).get("run", {}).get("crawl_config")
@@ -580,10 +582,8 @@ def compare(
     # only that it did not see it (issue #212). Without this, every finding on
     # a URL outside the truncated baseline is misreported as "appeared".
     before_partial = bool(_run(before).get("crawl_partial"))
-    # Symmetrically, a partial after-crawl cannot prove a URL it never reached
-    # is genuinely gone — only that it did not see it (issue #458). Without
-    # this, every finding on a URL outside the truncated after crawl is
-    # misreported as "disappeared" instead of the unproven "left".
+    # A partial after-crawl leaves its unreached URLs unproven (issue #458); they
+    # are reported as not rechecked, never as fixed.
     after_partial = bool(_run(after).get("crawl_partial"))
 
     entered: list[dict[str, Any]] = []
@@ -622,10 +622,10 @@ def compare(
                 appeared.append(record)  # the URL itself is new to this crawl
         elif in_before and not in_after:
             record = dict(before_issues[key])
-            if url_in_after_crawl or after_partial:
-                left.append(record)  # still crawled, no longer matches — a fix
+            if url_in_before_crawl and url_in_after_crawl:
+                left.append(record)  # fetched by both crawls, no longer matches — a fix
             else:
-                disappeared.append(record)  # not in this crawl at all — unproven
+                disappeared.append(record)  # not rechecked: not fetched by both crawls
 
     def _sort(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return sorted(items, key=lambda i: (i.get("check", ""), str(i.get("target_url") or "")))

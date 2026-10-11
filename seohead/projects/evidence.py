@@ -74,6 +74,30 @@ def _artifact_receipt(root: Path, reference: str) -> dict:
     }
 
 
+def audit_facts(path: Path, con: Any) -> tuple[dict, dict, set]:
+    """Return run, check coverage and fired check IDs of a retained scan's audit.
+
+    A streamed scan keeps its audit in the audit.v2 companion, so the legacy ``audit`` row is
+    absent; the companion header and its issue collection are read instead, never a second copy.
+    """
+    row = con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()
+    if row is not None:
+        audit = json.loads(row[0])
+        fired = {item.get("check") for item in audit.get("issues", [])}
+        header = audit
+    else:
+        from seohead.storage.audit_v2 import AuditV2Reader
+
+        with AuditV2Reader(path) as reader:
+            header = reader.header
+            fired = {item.get("check") for item in reader.iter_collection("/issues")}
+    return (
+        header.get("run", {}),
+        header.get("summary", {}).get("check_coverage", {}),
+        fired,
+    )
+
+
 def _saved_check(root: Path, definition: dict, value: Any) -> dict:
     """Bind automatic completion to the check outcome and identity inside scan.v1."""
     from seohead.storage import open_scan
@@ -86,14 +110,9 @@ def _saved_check(root: Path, definition: dict, value: Any) -> dict:
     con = open_scan(path)
     try:
         scan = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
-        audit = json.loads(
-            con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()[0]
-        )
         operation = definition["operation"]
         check_id = operation.removeprefix("check:")
-        run = audit.get("run", {})
-        coverage = audit.get("summary", {}).get("check_coverage", {})
-        fired = {item.get("check") for item in audit.get("issues", [])}
+        run, coverage, fired = audit_facts(path, con)
         silent = set(coverage.get("checks_silent_ids", []))
         unavailable = {
             item.get("id")

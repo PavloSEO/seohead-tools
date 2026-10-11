@@ -37,9 +37,13 @@ def _with_inbox_notice(
     """Add only this project's unread summary without consuming it."""
     if consumer is None:
         return result
-    from seohead.projects.inbox import unread_summary
+    from seohead.projects.inbox import unread_goal_tasks, unread_summary
 
-    return {**result, "inbox_unread": unread_summary(directory, consumer=consumer)}
+    return {
+        **result,
+        "inbox_unread": unread_summary(directory, consumer=consumer),
+        "owner_tasks_unread": unread_goal_tasks(directory, consumer=consumer),
+    }
 
 
 def project_basic_status(directory: str, consumer: str | None = None) -> dict[str, Any]:
@@ -149,9 +153,9 @@ def project_inbox_unread(directory: str, consumer: str, limit: int = 10) -> dict
 
 
 def project_event_append(directory: str, source: str, actor: str, text: str) -> dict[str, Any]:
-    from seohead.projects.event_log import append
+    from seohead.projects.journal import record
 
-    return append(directory, source=source, actor=actor, text=text)
+    return record(directory, source=source, actor=actor, text=text)
 
 
 def project_event_page(

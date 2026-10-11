@@ -615,6 +615,23 @@ def _segment_counts(
     return counts
 
 
+def _record_crawl_evidence(project_root: Path, scan: str | Path) -> dict[str, Any]:
+    """Attach a finished project crawl to its automatic checklist items; never fails the crawl."""
+    from seohead.projects.crawl_evidence import record_scan
+
+    try:
+        return record_scan(project_root, Path(scan))
+    except (OSError, ValueError) as exc:
+        return {"error": str(exc)}
+
+
+def _record_crawl_failure(project_root: Path, reason: str) -> None:
+    from seohead.projects.crawl_evidence import record_failure
+
+    with contextlib.suppress(OSError, ValueError):
+        record_failure(project_root, reason)
+
+
 def crawl_site(
     url: str | None = None,
     urls: list[str] | None = None,
@@ -787,6 +804,7 @@ def crawl_site(
                             reason=type(exc).__name__,
                             counters=reporter.counters(),
                         )
+                    _record_crawl_failure(project_root, type(exc).__name__)
                     raise
                 with contextlib.suppress(OSError, ValueError):
                     finish(
@@ -808,6 +826,7 @@ def crawl_site(
                     **result,
                     **rate_fields(resume_data["settings"]),
                     "observer_run_id": observed["id"],
+                    "checklist_evidence": _record_crawl_evidence(project_root, resume),
                 }
         from seohead.crawl.settings import rate_fields
         from seohead.mcp.scan_handlers import resume_inputs
@@ -864,6 +883,8 @@ def crawl_site(
     settings = crawl_config.load(
         config, overrides=resolved_overrides, base_overrides=base_overrides
     )
+    if max_urls is not None or "limits.max_urls" in resolved_overrides:
+        crawl_config.bind_budgets_to_page_budget(settings, set(resolved_overrides))
     # A storage-only synthetic capacity marker never enters a live crawl route.
     from seohead.crawl.settings import checked_url_budget
 
@@ -1117,6 +1138,7 @@ def crawl_site(
                         reason=type(exc).__name__,
                         counters=reporter.counters(),
                     )
+                _record_crawl_failure(project_root, type(exc).__name__)
             raise
         if observed is not None and reporter is not None:
             from seohead.projects.run_observation import finish
@@ -1141,6 +1163,7 @@ def crawl_site(
                 **result,
                 **crawl_config.rate_fields(settings),
                 "observer_run_id": observed["id"],
+                "checklist_evidence": _record_crawl_evidence(project_root, scan_out),
             }
         return {**result, **crawl_config.rate_fields(settings)}
     dispatch_gate = None
@@ -1647,7 +1670,9 @@ def _audit_crawl_result(
     available_exports = set(exports.frames)
     if ctx.native_hreflang is not None and ctx.native_hreflang["declarations"]:
         available_exports.add("all_hreflang")
-    ctx.skip_unsupported(available_exports)
+    from seohead.sf.core.rules import native_check_ids
+
+    ctx.skip_unsupported(available_exports, native=native_check_ids(ctx))
     run_rules(ctx)
     if stored_list:
         unavailable_origins = stored_scan.con.execute(
@@ -2642,7 +2667,15 @@ def verify_fixes(
                 changed = sorted(
                     key
                     for key in set(recorded) | set(measured)
-                    if key not in {"limits.max_urls", "limits.max_depth"}
+                    # The request and time budgets are derived from the page budget
+                    # (bind_budgets_to_page_budget), so they are not policy to replay.
+                    if key
+                    not in {
+                        "limits.max_urls",
+                        "limits.max_depth",
+                        "limits.max_requests",
+                        "limits.max_crawl_seconds",
+                    }
                     and recorded.get(key) != measured.get(key)
                 )
                 if settings["cache"]["mode"] != "off":

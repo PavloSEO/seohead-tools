@@ -16,7 +16,7 @@ from typing import Any
 from seohead.core.filesystem import atomic_write_bytes
 
 from .catalogue import load_catalogue
-from .coverage import _now, coverage_status, initialize_coverage, update_item
+from .coverage import _now, coverage_status, initialize_coverage, record_execution, update_item
 from .workspace import _load, _target
 
 POLICY_FORMAT = "seohead.project-crawl-policy.v1"
@@ -278,9 +278,23 @@ def preparation_status(directory: str) -> dict:
     return state
 
 
+def _candidate_url(value: str) -> str:
+    """Validate a competitor URL like a target, but keep its host as entered (www included)."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    _target(value)
+    parts = urlsplit(value.strip())
+    port = f":{parts.port}" if parts.port else ""
+    return urlunsplit((parts.scheme.lower(), parts.hostname + port, parts.path or "/", "", ""))
+
+
 def _candidate(value: Any) -> dict:
     if isinstance(value, str):
-        return {"url": _target(value), "source": "operator supplied candidate", "observed_at": None}
+        return {
+            "url": _candidate_url(value),
+            "source": "operator supplied candidate",
+            "observed_at": None,
+        }
     if not isinstance(value, dict) or set(value) != {"url", "source", "observed_at"}:
         raise ValueError("competitor candidates require url, source and observed_at")
     if (
@@ -289,7 +303,7 @@ def _candidate(value: Any) -> dict:
         or len(value["source"]) > 512
     ):
         raise ValueError("competitor source is required")
-    return {**value, "url": _target(value["url"])}
+    return {**value, "url": _candidate_url(value["url"])}
 
 
 def prepare_project(
@@ -324,7 +338,7 @@ def prepare_project(
         raise ValueError("saved competitor candidate list exceeds the current project limit")
     if len({row["url"] for row in candidates}) != len(candidates):
         raise ValueError("duplicate competitor candidates")
-    if any(row["url"] == project["site"]["target"] for row in candidates):
+    if any(_target(row["url"]) == project["site"]["target"] for row in candidates):
         raise ValueError("the primary site cannot be its own competitor candidate")
     lock = root / ".prepare.lock"
     try:
@@ -408,11 +422,11 @@ def prepare_project(
             relative = source.relative_to(root).as_posix()
             from seohead.storage import open_scan
 
+            from .evidence import audit_facts
+
             with contextlib.closing(open_scan(source)) as con:
                 header = dict(con.execute("SELECT * FROM scan WHERE singleton=1").fetchone())
-                audit = json.loads(
-                    con.execute("SELECT document_json FROM audit WHERE singleton=1").fetchone()[0]
-                )
+                run, coverage, fired = audit_facts(source, con)
             state["steps"]["crawl"] = {
                 "state": "partial" if header["crawl_partial"] else "run",
                 "artifact": relative,
@@ -422,7 +436,7 @@ def prepare_project(
             }
             sitemap_skips = [
                 row
-                for row in audit.get("run", {}).get("checks_skipped", [])
+                for row in run.get("checks_skipped", [])
                 if str(row.get("id", "")).startswith("SITEMAP_")
             ]
             state["steps"]["sitemap"] = {
@@ -431,17 +445,15 @@ def prepare_project(
                 "reason": "saved sitemap coverage; unavailable checks remain explicit",
                 "unavailable": sitemap_skips,
             }
-            from .coverage import record_execution
+            from .crawl_evidence import record_scan
 
-            executed = set(
-                audit.get("summary", {}).get("check_coverage", {}).get("checks_silent_ids", [])
-            )
-            executed.update(row.get("check") for row in audit.get("issues", []))
+            evidence = record_scan(root, source)
+            executed = set(coverage.get("checks_silent_ids", []))
+            executed.update(fired)
             unavailable = {
-                row.get("id"): row.get("reason")
-                for row in audit.get("run", {}).get("checks_skipped", [])
+                row.get("id"): row.get("reason") for row in run.get("checks_skipped", [])
             }
-            recording_errors = []
+            recording_errors = list(evidence.get("refused", []))
             for item in coverage_status(root)["items"]:
                 if item["kind"] != "check" or item["complete"] or not item["enabled"]:
                     continue

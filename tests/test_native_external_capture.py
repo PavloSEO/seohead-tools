@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import socket
 import threading
@@ -111,18 +112,26 @@ def test_native_external_capture_resume_does_not_repeat_completed_destination(
         settings = load(
             overrides={
                 "speed.min_delay_seconds": 0,
-                "limits.max_urls": 1,
+                "limits.max_urls": 1000,
                 "discovery.external.crawl": True,
                 "external_checks.max_targets": 4,
                 "storage.body_mode": "captured_entity_bytes",
             }
         )
-        crawl_site_scan(
-            f"http://site.localhost:{server.server_port}/",
-            scan_out=str(path),
-            settings=settings,
-            producer_build="a" * 40,
-        )
+
+        def stop_after_first_page(done, _total):
+            # A page budget is now a finished stop; simulate a killed run instead.
+            if done >= 1:
+                raise KeyboardInterrupt
+
+        with contextlib.suppress(KeyboardInterrupt):
+            crawl_site_scan(
+                f"http://site.localhost:{server.server_port}/",
+                scan_out=str(path),
+                settings=settings,
+                producer_build="a" * 40,
+                progress=stop_after_first_page,
+            )
         with open_scan(path, require_audit=False) as scan:
             assert scan.execute("SELECT lifecycle FROM scan").fetchone()[0] == "interrupted"
             assert scan.execute("SELECT COUNT(*) FROM external_checks").fetchone()[0] == 1

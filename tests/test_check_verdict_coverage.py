@@ -101,7 +101,6 @@ KNOWN_UNCOVERED: frozenset[str] = frozenset(
         "LARGE_HTML",
         "LINK_TO_5XX",
         "LONG_SENTENCES",
-        "MIXED_CONTENT",
         "NOARCHIVE",
         "NOINDEX",
         "NON_INDEXABLE_LINKED",

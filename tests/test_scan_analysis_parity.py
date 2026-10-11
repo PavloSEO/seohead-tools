@@ -194,6 +194,14 @@ def _drop_retained_only_checks(audit: dict) -> dict:
 _RETAINED_RUN_FIELDS = {"scan_uuid", "config_fingerprint", "corpus_partial", "source_kind"}
 
 
+def _label_budget_stop(audit):
+    """Name a URL-budget stop the same way on both paths (see the parity tests below)."""
+    run = audit["run"]
+    if run.get("crawl_finish_reason") in {"stopped_by_budget", "url_limit"}:
+        run["crawl_finish_reason"] = "budget_stop"
+        run["crawl_stopped_reason"] = "budget_stop"
+
+
 def _outcome(audit, *, retained_run=None):
     """The whole audit contract except the report clock and measured response durations.
 
@@ -397,6 +405,11 @@ def test_sql_graph_audit_matches_legacy_without_building_all_inlinks(
 
     sql_outcome = _outcome(sql_audit, retained_run=retained_run)
     legacy_outcome = _outcome(legacy_audit)
+    # A URL-budget stop is labelled stopped_by_budget by the native scan (finished, see
+    # stop_by_budget) and url_limit by the legacy spider. Both are the same stop, so the
+    # run label is compared as a budget stop; the findings and tasks still compare exactly.
+    _label_budget_stop(sql_outcome)
+    _label_budget_stop(legacy_outcome)
     paths = _different_paths(sql_outcome, legacy_outcome)
     (tmp_path / "scan-analysis-parity-diff.txt").write_text("\n".join(paths) + "\n")
     assert sql_outcome == legacy_outcome, "\n".join(paths)
@@ -414,6 +427,7 @@ def test_sql_graph_audit_matches_legacy_without_building_all_inlinks(
     sql_render_audit = _outcome(sql_audit, retained_run=retained_run)
     for audit in (legacy_render_audit, sql_render_audit):
         audit["run"]["generated_at"] = legacy_audit["run"]["generated_at"]
+        _label_budget_stop(audit)
     from seohead.reports import build_report
 
     for fmt in ("json", "md", "csv", "xlsx", "docx"):

@@ -361,6 +361,60 @@ def test_compare_crawls_accepts_streaming_audit_v2_sources(tmp_path):
     assert result["summary"]["disappeared"] == 0
 
 
+def test_compare_crawls_reads_the_native_scan_not_its_audit_v2_companion(tmp_path):
+    from seohead.mcp.handlers import compare_crawls
+    from seohead.storage.audit_v2 import audit_v2_path
+
+    before_path = tmp_path / "before.sqlite"
+    after_path = tmp_path / "after.sqlite"
+    write_audit_v2(
+        before_path,
+        {"run": {"generated_at": "before"}, "issues": [], "pages": []},
+        {
+            "/issues": [{"check": "X", "target_url": "https://e.test/a"}],
+            "/pages": [{"url": "https://e.test/a"}],
+        },
+        _scan(before_path),
+    )
+    write_audit_v2(
+        after_path,
+        {"run": {"generated_at": "after"}, "issues": [], "pages": []},
+        {"/issues": [], "/pages": [{"url": "https://e.test/a"}]},
+        _scan(after_path),
+    )
+
+    result = compare_crawls(before=str(audit_v2_path(before_path)), after=str(after_path))
+
+    assert result["summary"]["left"] == 1
+    assert result["input_diagnostics"] == [
+        {
+            "code": "audit_v2_sidecar",
+            "path": audit_v2_path(before_path).name,
+            "message": "Used the native scan this audit.v2 companion belongs to.",
+            "input": "before",
+        }
+    ]
+
+
+def test_compare_crawls_refuses_an_orphan_audit_v2_companion(tmp_path):
+    from seohead.mcp.handlers import compare_crawls
+    from seohead.storage.audit_v2 import audit_v2_path
+
+    before_path = tmp_path / "before.sqlite"
+    after_path = tmp_path / "after.sqlite"
+    write_audit_v2(
+        before_path,
+        {"issues": [], "pages": []},
+        {"/issues": [], "/pages": []},
+        _scan(before_path),
+    )
+    _scan(after_path)
+    before_path.unlink()
+
+    with pytest.raises(ValueError, match="without its native scan"):
+        compare_crawls(before=str(audit_v2_path(before_path)), after=str(after_path))
+
+
 def test_audit_v2_saves_and_reopens_populations_above_ten_thousand(tmp_path):
     scan = tmp_path / "scan.sqlite"
     binding = _scan(scan)

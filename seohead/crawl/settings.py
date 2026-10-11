@@ -83,6 +83,30 @@ MAX_MATERIALIZED_URLS = 50_000
 MAX_REQUESTS_CEILING = 2_000_000
 
 
+# ponytail: a stated page budget implies the request and time budgets a small crawl needs,
+# so --max-urls alone admits a 50-300 page crawl. Ratios match the project quick-crawl preset.
+# ceiling: a page budget whose derived requests/seconds exceed the project thresholds is still refused.
+# upgrade: derive from observed per-page cost once the crawler reports it.
+BUDGET_REQUESTS_PER_PAGE = 3
+BUDGET_SECONDS_PER_PAGE = 2
+
+
+def bind_budgets_to_page_budget(settings: dict, explicit: set[str]) -> None:
+    """Fill unset request and time budgets from an explicit page budget (in place)."""
+    limits = settings["limits"]
+    pages = limits["max_urls"]
+    if not pages:
+        return
+    defaults = DEFAULTS["limits"]
+    if "limits.max_requests" not in explicit and limits["max_requests"] == defaults["max_requests"]:
+        limits["max_requests"] = min(BUDGET_REQUESTS_PER_PAGE * pages, MAX_REQUESTS_CEILING)
+    if (
+        "limits.max_crawl_seconds" not in explicit
+        and limits["max_crawl_seconds"] == defaults["max_crawl_seconds"]
+    ):
+        limits["max_crawl_seconds"] = BUDGET_SECONDS_PER_PAGE * pages
+
+
 def checked_url_budget(max_urls: int, *, materialized: bool = False) -> int:
     """How many URLs a crawl may fetch -- or a refusal, never a quiet reduction.
 
