@@ -2667,7 +2667,15 @@ def verify_fixes(
                 changed = sorted(
                     key
                     for key in set(recorded) | set(measured)
-                    if key not in {"limits.max_urls", "limits.max_depth"}
+                    # The request and time budgets are derived from the page budget
+                    # (bind_budgets_to_page_budget), so they are not policy to replay.
+                    if key
+                    not in {
+                        "limits.max_urls",
+                        "limits.max_depth",
+                        "limits.max_requests",
+                        "limits.max_crawl_seconds",
+                    }
                     and recorded.get(key) != measured.get(key)
                 )
                 if settings["cache"]["mode"] != "off":
